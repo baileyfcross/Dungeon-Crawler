@@ -1,0 +1,8 @@
+{
+    "name": "SpaceCrawler.Tests.EditMode",
+    "rootNamespace": "SpaceCrawler.Tests.EditMode",
+    "references": ["SpaceCrawler.Core"],
+    "includePlatforms": ["Editor"],
+    "optionalUnityReferences": ["TestAssemblies"],
+    "autoReferenced": false
+}

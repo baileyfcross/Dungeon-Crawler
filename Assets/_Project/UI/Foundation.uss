@@ -1,0 +1,44 @@
+.screen {
+    flex-grow: 1;
+    background-color: rgb(10, 18, 29);
+    color: rgb(228, 239, 245);
+    padding: 32px 52px;
+}
+.top-line { flex-direction: row; justify-content: space-between; align-items: center; }
+.brand { font-size: 17px; -unity-font-style: bold; letter-spacing: 3px; }
+.eyebrow { font-size: 12px; letter-spacing: 2px; color: rgb(148, 168, 184); }
+.accent { color: rgb(96, 221, 218); }
+.content { flex-grow: 1; justify-content: center; }
+.title { font-size: 48px; -unity-font-style: bold; margin: 10px 0 6px 0; }
+.subtitle { font-size: 19px; color: rgb(159, 180, 195); margin-bottom: 24px; }
+.description { font-size: 17px; color: rgb(159, 180, 195); white-space: normal; margin-bottom: 24px; }
+.actions { width: 380px; max-width: 100%; }
+Button {
+    height: 44px;
+    margin: 0 0 8px 0;
+    padding: 0 18px;
+    border-width: 1px;
+    border-color: rgb(53, 78, 97);
+    border-radius: 4px;
+    background-color: rgb(20, 36, 51);
+    color: rgb(228, 239, 245);
+    font-size: 16px;
+    -unity-text-align: middle-left;
+}
+Button:hover { background-color: rgb(32, 56, 72); border-color: rgb(96, 221, 218); }
+Button:focus { border-width: 2px; border-color: rgb(174, 255, 243); }
+Button:active { background-color: rgb(53, 91, 105); }
+Button.primary { background-color: rgb(85, 208, 206); color: rgb(8, 27, 38); -unity-font-style: bold; }
+Button.primary:hover { background-color: rgb(135, 234, 226); }
+Button:disabled { background-color: rgb(17, 28, 41); border-color: rgb(34, 49, 65); color: rgb(127, 148, 165); }
+.status { min-height: 24px; margin-top: 8px; font-size: 15px; color: rgb(249, 192, 128); }
+.footer { font-size: 12px; color: rgb(137, 157, 175); white-space: normal; }
+.gameplay-root { flex-grow: 1; color: rgb(228, 239, 245); }
+.gameplay-hud { flex-grow: 1; padding: 24px 32px; }
+.hud-actions { flex-direction: row; }
+.hud-actions Button { width: 160px; margin-left: 10px; }
+.hud-spacer { flex-grow: 1; }
+.controls { font-size: 12px; color: rgb(173, 197, 209); background-color: rgba(10, 18, 29, 0.85); padding: 12px; white-space: normal; }
+.pause-overlay { position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; background-color: rgba(5, 10, 18, 0.88); }
+.pause-card { width: 440px; padding: 28px; border-radius: 6px; background-color: rgb(14, 27, 40); }
+.pause-hint { font-size: 13px; margin-top: 16px; margin-bottom: 0; }

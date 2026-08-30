@@ -1,0 +1,7 @@
+{
+    "name": "SpaceCrawler.Core",
+    "rootNamespace": "SpaceCrawler.Core",
+    "references": [],
+    "autoReferenced": true,
+    "noEngineReferences": true
+}

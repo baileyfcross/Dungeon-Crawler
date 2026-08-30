@@ -1,0 +1,31 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="Foundation.uss" />
+    <ui:VisualElement class="gameplay-root" picking-mode="Ignore">
+        <ui:VisualElement name="gameplay-hud" class="gameplay-hud" picking-mode="Ignore">
+            <ui:VisualElement class="top-line" picking-mode="Ignore">
+                <ui:VisualElement picking-mode="Ignore">
+                    <ui:Label text="CONTROLS TEST AREA" class="brand" picking-mode="Ignore" />
+                    <ui:Label text="PHASE 2 / FIXED TOP-DOWN 2D" class="eyebrow" picking-mode="Ignore" />
+                </ui:VisualElement>
+                <ui:VisualElement class="hud-actions">
+                    <ui:Button name="pause" text="Pause  /  Esc" focusable="false" />
+                    <ui:Button name="return-to-menu" text="Main Menu" focusable="false" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement class="hud-spacer" picking-mode="Ignore" />
+            <ui:Label text="MOVE  WASD / ARROWS / LEFT STICK     AIM  POINTER / RIGHT STICK     PAUSE  ESC / START" class="controls" picking-mode="Ignore" />
+        </ui:VisualElement>
+        <ui:VisualElement name="pause-overlay" class="pause-overlay">
+            <ui:VisualElement class="pause-card">
+                <ui:Label text="SPACE CRAWLER" class="eyebrow accent" />
+                <ui:Label text="Paused" class="title" />
+                <ui:Label text="Controls test area" class="subtitle" />
+                <ui:Button name="resume" text="Resume" class="primary" />
+                <ui:Button name="options" text="Options — unavailable" />
+                <ui:Button name="pause-return-to-menu" text="Return to Main Menu" />
+                <ui:Label text="Release movement controls before resuming.&#10;Focus loss pauses gameplay automatically." class="description pause-hint" />
+                <ui:Label name="status" class="status" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

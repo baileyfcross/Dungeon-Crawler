@@ -1,0 +1,23 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="Foundation.uss" />
+    <ui:VisualElement class="screen">
+        <ui:VisualElement class="top-line">
+            <ui:Label text="SPACE CRAWLER" class="brand" />
+            <ui:Label text="CONTROLS / 02" class="eyebrow" />
+        </ui:VisualElement>
+        <ui:VisualElement class="content">
+            <ui:Label text="MAIN MENU" class="eyebrow accent" />
+            <ui:Label text="Space Crawler" class="title" />
+            <ui:Label text="Player controls prototype" class="subtitle" />
+            <ui:VisualElement class="actions">
+                <ui:Button name="new-game" text="New Game" class="primary" />
+                <ui:Button name="continue" text="Continue  /  No save available" enabled="false" />
+                <ui:Button name="load-game" text="Load Game  /  Unavailable" enabled="false" />
+                <ui:Button name="options" text="Options  /  Unavailable" enabled="false" />
+                <ui:Button name="exit" text="Exit" />
+            </ui:VisualElement>
+            <ui:Label name="status" class="status" />
+        </ui:VisualElement>
+        <ui:Label text="PHASE 2  /  New Game opens the controls test area. No combat or save data is created." class="footer" />
+    </ui:VisualElement>
+</ui:UXML>

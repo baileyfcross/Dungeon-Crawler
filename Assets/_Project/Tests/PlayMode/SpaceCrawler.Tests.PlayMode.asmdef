@@ -1,0 +1,7 @@
+{
+    "name": "SpaceCrawler.Tests.PlayMode",
+    "rootNamespace": "SpaceCrawler.Tests.PlayMode",
+    "references": ["SpaceCrawler.Core", "SpaceCrawler.Gameplay", "Unity.InputSystem"],
+    "optionalUnityReferences": ["TestAssemblies"],
+    "autoReferenced": false
+}
