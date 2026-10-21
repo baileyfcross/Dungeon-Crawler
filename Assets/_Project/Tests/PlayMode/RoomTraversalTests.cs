@@ -54,6 +54,7 @@ namespace SpaceCrawler.Tests.PlayMode
         private IEnumerator StartSession(ulong seed, string weapon = "Knife")
         {
             session = Object.Instantiate(AssetDatabase.LoadAssetAtPath<GameplaySession>(SessionPath));
+            session.Rooms.UseCombatFixture = true;
             var data = new SerializedObject(session);
             data.FindProperty("startingWeapon").objectReferenceValue = AssetDatabase.LoadAssetAtPath<WeaponDefinition>($"Assets/_Project/Data/Weapons/{weapon}.asset");
             data.ApplyModifiedPropertiesWithoutUndo();
@@ -265,6 +266,11 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(Object.FindObjectsByType<AuthoredRoom>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length, Is.EqualTo(1));
             Assert.That(Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None).Length, Is.EqualTo(1));
             var node = session.Run.GetRoom(Rooms.Progression.CurrentRoomId);
+            if (!Rooms.UseCombatFixture)
+            {
+                Assert.That(room.Targets, Is.Empty, "Normal play must not contain stationary combat fixtures.");
+                Assert.That(room.GetComponentsInChildren<DamageableTarget>(true).Length, Is.EqualTo(room.Encounter.Enemies.Count));
+            }
             Assert.That(room.Encounter.Enemies.Count, Is.EqualTo(node.Category == RoomCategory.Engine && !node.IsTerminal ? 1 : 0),
                 "Only nonterminal Engine rooms receive the authored melee encounter.");
             var definition = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"Assets/_Project/Data/Rooms/{node.Category}.asset");

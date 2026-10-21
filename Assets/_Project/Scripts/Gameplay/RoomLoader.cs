@@ -18,6 +18,17 @@ namespace SpaceCrawler.Gameplay
         public AuthoredRoom CurrentPrefab { get; private set; }
         public RunProgression Progression { get; private set; }
         public event Action RoomChanged;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        [SerializeField] private CombatTargetFixture combatFixturePrefab;
+        public bool UseCombatFixture { get; set; }
+        public void AddCombatFixtureToCurrentRoom()
+        {
+            if (CurrentRoom == null || CurrentRoom.Targets.Count != 0 || combatFixturePrefab == null)
+                throw new InvalidOperationException("Combat fixtures require an empty room and an explicit fixture prefab.");
+            var fixture = Instantiate(combatFixturePrefab, CurrentRoom.ContentRoot);
+            CurrentRoom.SetCombatFixtureTargets(fixture.Targets);
+        }
+#endif
 
         public void Bind(GameplaySession gameplaySession, ApplicationFlow applicationFlow, RunGenerationDefinition definitions, RunCheckpoint checkpoint = null)
         {
@@ -69,6 +80,11 @@ namespace SpaceCrawler.Gameplay
             RemoveCurrentRoom();
             CurrentPrefab = prefabs[graph.GetRoom(destination).DefinitionId];
             CurrentRoom = Instantiate(CurrentPrefab, roomContainer);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            var validation = SessionDiagnostics.Option("--session-validation");
+            if (UseCombatFixture || validation == "run" || validation == "checkpoint" || validation == "resume" || validation == "enemies")
+                AddCombatFixtureToCurrentRoom();
+#endif
             CurrentRoom.ValidateAuthoring();
         }
 

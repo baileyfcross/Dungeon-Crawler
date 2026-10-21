@@ -367,6 +367,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: SpaceCrawler.Gameplay::SpaceCrawler.Gameplay.RoomLoader
   roomContainer: {fileID: 6726258350064626440}
+  combatFixturePrefab: {fileID: 3793489266232374767, guid: c2c021a4e22e5bf478146a9dd8eeeb6a, type: 3}
 --- !u!1 &2812226076012047305
 GameObject:
   m_ObjectHideFlags: 0

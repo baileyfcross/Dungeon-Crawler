@@ -49,10 +49,11 @@ namespace SpaceCrawler.Tests.PlayMode
             var flow = new ApplicationFlow(); flow.TryRequest(ApplicationCommand.Initialize); flow.CompleteLoading(ApplicationState.MainMenu);
             flow.TryRequest(ApplicationCommand.NewGame); flow.CompleteLoading(ApplicationState.Gameplay); return flow;
         }
-        private IEnumerator StartPair(bool blaster = false, bool levels = false, int enemies = 0, bool melee = false)
+        private IEnumerator StartPair(bool blaster = false, bool levels = false, int enemies = 0, bool melee = false, bool combatFixture = true)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<MultiplayerSession>("Assets/_Project/Prefabs/Gameplay/MultiplayerSession.prefab");
             host = Object.Instantiate(prefab); client = Object.Instantiate(prefab);
+            host.Rooms.UseCombatFixture = combatFixture; client.Rooms.UseCombatFixture = combatFixture;
             host.EnemyFixtureCount = enemies; client.EnemyFixtureCount = enemies;
             // One rendered view/audio listener in this test process; both follower states still update.
             client.Follower.GameplayCamera.enabled = false;
@@ -395,6 +396,31 @@ namespace SpaceCrawler.Tests.PlayMode
             enemy.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1), 900, enemy.Target.Identity, 100), out _);
             yield return WaitFor(() => replica.Lifecycle == EnemyLifecycle.Dead, "replicated melee enemy death");
             Assert.That(replica.DeathEvents, Is.EqualTo(1)); Assert.That(host.RunXp, Is.Zero);
+            Assert.That(host.Failure ?? client.Failure, Is.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator NormalCoopRoomsNeverSpawnStationaryCombatFixtures()
+        {
+            yield return StartPair(combatFixture: false);
+            var route = SessionValidationDriver.RouteToEngine(host.Run);
+            Assert.That(route, Is.Not.Null);
+            foreach (var edge in route)
+            {
+                Assert.That(host.Rooms.CurrentRoom.Targets, Is.Empty); Assert.That(client.Rooms.CurrentRoom.Targets, Is.Empty);
+                var choices = host.Progression.Choices;
+                var index = choices.ToList().FindIndex(choice => choice.To.Equals(edge.To));
+                var exit = choices.Count == 1 ? host.Rooms.CurrentRoom.SingleExit : index == 0 ? host.Rooms.CurrentRoom.LeftExit : host.Rooms.CurrentRoom.RightExit;
+                host.Players[0].Motor.PlaceAt(exit.transform.position + Vector3.left * .2f);
+                host.Players[1].Motor.PlaceAt(exit.transform.position + Vector3.right * .2f);
+                yield return WaitFor(() => host.CurrentRoom.Equals(edge.To) && client.CurrentRoom.Equals(edge.To) && host.RoomReady && client.RoomReady, "normal room transition");
+            }
+            Assert.That(host.Rooms.CurrentRoom.Targets, Is.Empty); Assert.That(client.Rooms.CurrentRoom.Targets, Is.Empty);
+            var enemy = host.Rooms.CurrentRoom.Encounter.Enemies.Single();
+            Assert.That(enemy.Behaviour, Is.Not.Null);
+            Assert.That(client.Rooms.CurrentRoom.Encounter.Enemies.Single().Behaviour, Is.Null);
+            Assert.That(host.Rooms.CurrentRoom.GetComponentsInChildren<DamageableTarget>(true).Length, Is.EqualTo(1));
+            Assert.That(client.Rooms.CurrentRoom.GetComponentsInChildren<DamageableTarget>(true).Length, Is.EqualTo(1));
             Assert.That(host.Failure ?? client.Failure, Is.Null);
         }
 

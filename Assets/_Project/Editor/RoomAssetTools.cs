@@ -58,21 +58,9 @@ namespace SpaceCrawler.Editor
                 var left = Exit("LeftExit", root.transform, new Vector2(-6, 13), new Color(0.35f, 0.7f, 0.9f), material);
                 var right = Exit("RightExit", root.transform, new Vector2(6, 13), new Color(0.9f, 0.7f, 0.3f), material);
                 var content = Anchor("RoomContent", root.transform, Vector2.zero);
-                var targetPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/Combat/DamageableTestTarget.prefab");
-                var positions = new[] { new Vector2(1.6f, 0), new Vector2(-1.6f, 0), new Vector2(3.2f, 0) };
-                var targets = new DamageableTarget[positions.Length];
-                for (var i = 0; i < targets.Length; i++)
-                {
-                    var target = (GameObject)PrefabUtility.InstantiatePrefab(targetPrefab, content);
-                    target.transform.localPosition = positions[i];
-                    targets[i] = target.GetComponent<DamageableTarget>();
-                    var data = new SerializedObject(targets[i]);
-                    data.FindProperty("identity").intValue = i + 1;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
                 SetReference(room, "floor", floor); SetReference(room, "entryAnchor", entry); SetReference(room, "playerSpawnAnchor", spawn);
                 SetReference(room, "contentRoot", content); SetReference(room, "singleExit", single); SetReference(room, "leftExit", left); SetReference(room, "rightExit", right);
-                SetArray(room, "staticCollision", walls); SetArray(room, "targets", targets);
+                SetArray(room, "staticCollision", walls); SetArray(room, "targets", Array.Empty<DamageableTarget>());
                 room.ValidateAuthoring();
                 PrefabUtility.SaveAsPrefabAsset(root, path);
             }

@@ -57,6 +57,8 @@ namespace SpaceCrawler.Tests.PlayMode
             }
             var saved = root.SavedCheckpoint;
             Assert.That(saved.LevelNumber, Is.EqualTo(2));
+            session.Combat.ClearRoom(); session.Rooms.AddCombatFixtureToCurrentRoom();
+            session.Combat.RegisterRoomTargets(session.Rooms.CurrentRoom.CombatTargets);
             var target = session.Combat.Targets[0];
             target.Health.TryApplyDamage(new DamageRequest(session.Simulation.State.Player, 999, target.Identity, 25), out _);
             root.Flow.TryRequest(ApplicationCommand.ReturnToMainMenu);
@@ -67,6 +69,8 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(session.Rooms.Progression.CurrentRoomId, Is.EqualTo(saved.CurrentRoom));
             Assert.That(session.Rooms.Progression.VisitedRooms, Is.EqualTo(saved.RoomVisits));
             Assert.That(session.Sequence.CompletedRoutes.Count, Is.EqualTo(1));
+            session.Combat.ClearRoom(); session.Rooms.AddCombatFixtureToCurrentRoom();
+            session.Combat.RegisterRoomTargets(session.Rooms.CurrentRoom.CombatTargets);
             Assert.That((Vector2)session.Motor.Body.position, Is.EqualTo((Vector2)session.Rooms.CurrentRoom.PlayerSpawnAnchor.position));
             Assert.That(session.Combat.Targets[0].Health.Current, Is.EqualTo(session.Combat.Targets[0].InitialHealth));
             Assert.That(session.Combat.Projectiles, Is.Empty);

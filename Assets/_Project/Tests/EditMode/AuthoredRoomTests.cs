@@ -22,6 +22,8 @@ namespace SpaceCrawler.Tests.EditMode
             var definition = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"Assets/_Project/Data/Rooms/{category}.asset");
             var snapshot = definition.CreateConfiguration();
             var room = definition.RoomPrefab;
+            Assert.That(room.Targets, Is.Empty, "Stationary targets belong only in explicitly enabled combat fixtures.");
+            Assert.That(room.GetComponentsInChildren<DamageableTarget>(true), Is.Empty, "No inactive fixture remnants in playable prefabs.");
             Assert.That(room, Is.SameAs(AssetDatabase.LoadAssetAtPath<AuthoredRoom>($"Assets/_Project/Prefabs/Rooms/{category}.prefab")));
             Assert.DoesNotThrow(room.ValidateAuthoring);
             Assert.That(room.PlayableBounds.size, Is.EqualTo(new Vector2(24, 16)));

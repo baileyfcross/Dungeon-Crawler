@@ -101,6 +101,18 @@ namespace SpaceCrawler.Gameplay
         }
 
         public void RetireEncounter() => Encounter?.Retire();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        public void SetCombatFixtureTargets(DamageableTarget[] fixtureTargets)
+        {
+            if (targets.Length != 0 || fixtureTargets == null || fixtureTargets.Length == 0)
+                throw new InvalidOperationException("A combat fixture may only populate an empty target list.");
+            targets = (DamageableTarget[])fixtureTargets.Clone();
+            ValidateAuthoring();
+            var combined = new List<DamageableTarget>(targets);
+            if (Encounter != null) foreach (var enemy in Encounter.Enemies) combined.Add(enemy.Target);
+            combatTargets = combined.AsReadOnly();
+        }
+#endif
         private void OnDestroy() => RetireEncounter();
 
         private void RequireChild(Component component)
