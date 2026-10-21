@@ -68,7 +68,8 @@ namespace SpaceCrawler.Core
                 if (File.Exists(ProfileProgressStore.ReceiptPath(Path.GetDirectoryName(FilePath), checkpoint.Life.RunId)))
                     throw new InvalidOperationException("An ended run cannot be saved again.");
                 var status = Read(FilePath, out var previous, out _);
-                if (previous?.SourceSchemaVersion == 2 && !File.Exists(FilePath + ".schema2")) File.Copy(FilePath, FilePath + ".schema2");
+                if (previous != null && previous.SourceSchemaVersion < RunCheckpoint.SchemaVersion)
+                { var archive = FilePath + ".schema" + previous.SourceSchemaVersion; if (!File.Exists(archive)) File.Copy(FilePath,archive); }
                 if (status == CheckpointLoadStatus.Unavailable) throw new IOException("Existing save cannot be accessed safely.");
                 // Keep incompatible/corrupt evidence without replacing a previous valid backup.
                 if (status == CheckpointLoadStatus.Invalid || status == CheckpointLoadStatus.Incompatible)

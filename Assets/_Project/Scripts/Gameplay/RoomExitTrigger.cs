@@ -9,6 +9,8 @@ namespace SpaceCrawler.Gameplay
     {
         [SerializeField] private BoxCollider2D trigger;
         private Rigidbody2D controlledBody;
+        private readonly System.Collections.Generic.HashSet<Rigidbody2D> blockedArrivals = new System.Collections.Generic.HashSet<Rigidbody2D>();
+        public void SuppressUntilDeparture(Rigidbody2D body) => blockedArrivals.Add(body);
         private Func<ExitIntent, bool> request;
         private ExitIntent intent;
         private Action<RoomConnection, Collider2D, bool> presence;
@@ -30,6 +32,7 @@ namespace SpaceCrawler.Gameplay
 
         public void DisableExit()
         {
+            blockedArrivals.Clear();
             presence = null;
             request = null;
             controlledBody = null;
@@ -38,6 +41,7 @@ namespace SpaceCrawler.Gameplay
 
         public bool TryEnter(Collider2D other)
         {
+            if (other != null && other.attachedRigidbody != null && blockedArrivals.Contains(other.attachedRigidbody)) return false;
             if (isActiveAndEnabled && other != null && presence != null)
             { presence(connection, other, true); return true; }
             return isActiveAndEnabled && trigger != null && trigger.enabled && request != null
@@ -46,7 +50,8 @@ namespace SpaceCrawler.Gameplay
 
         private void OnTriggerEnter2D(Collider2D other) => TryEnter(other);
         private void OnTriggerStay2D(Collider2D other) => TryEnter(other);
-        private void OnTriggerExit2D(Collider2D other) => presence?.Invoke(connection, other, false);
+        private void OnTriggerExit2D(Collider2D other)
+        { if (other.attachedRigidbody != null) blockedArrivals.Remove(other.attachedRigidbody); presence?.Invoke(connection,other,false); }
 
         public void ConfigureReadiness(RoomConnection edge, Action<RoomConnection, Collider2D, bool> receiver)
         {

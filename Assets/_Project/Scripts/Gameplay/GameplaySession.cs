@@ -37,6 +37,8 @@ namespace SpaceCrawler.Gameplay
         private ApplicationFlow flow;
         private bool runFinished;
         private EnemyCombatSystem enemies;
+        public RunWorldPersistence Persistence { get; private set; }
+        private long savedAttackCount;
         public RunLife Life { get; private set; }
         public string HealthFailure { get; private set; }
         public event Action HealthChanged;
@@ -52,6 +54,7 @@ namespace SpaceCrawler.Gameplay
             // Neither seed selection nor Unity state is consulted inside Core generation.
             var seed = runSeed ?? (Debug.isDebugBuild && useFixedSeed ? fixedSeed : CreateRunSeed());
             commitCheckpoint = save; this.flow = flow; endRun = finish;
+            Persistence = new RunWorldPersistence(checkpoint?.World);
             Life = new RunLife(checkpoint?.Life ?? RunLifeSnapshot.Fresh(1));
             Life.BindProfile(0, profileId ?? (Life.Capture().Profiles[0] != Guid.Empty ? Life.Capture().Profiles[0] : Guid.NewGuid()));
             Sequence = checkpoint != null ? RunSequence.Restore(checkpoint, generation.CreateConfiguration())
@@ -97,8 +100,10 @@ namespace SpaceCrawler.Gameplay
 
         public void CommitCheckpoint(RunProgression progression)
         {
-            if (commitCheckpoint != null && Sequence != null && !Life.Ended)
-                commitCheckpoint(RunCheckpoint.Capture(Sequence, progression, SavedSessionMode.Solo, new[] { combat.Simulation.EquippedWeapon.Id }, Life.Capture()));
+            if (Life.Ended || rooms?.CurrentRoom == null) return;
+            var world = Persistence.Capture(LevelNumber,progression.CurrentRoomId,rooms.CurrentRoom,new[] {motor},new[] {Simulation},new[] {combat});
+            if (commitCheckpoint != null && Sequence != null)
+                Persistence.Commit(RunCheckpoint.Capture(Sequence,progression,SavedSessionMode.Solo,new[] {combat.Simulation.EquippedWeapon.Id},Life.Capture(),world),commitCheckpoint);
         }
 
         public void SaveCurrent()
@@ -125,8 +130,17 @@ namespace SpaceCrawler.Gameplay
         {
             if (Life?.Ended == true && !runFinished) ApplyLife();
             if (PollLocalDevices) input.SampleMovement();
+            if (Persistence != null && Persistence.AutosaveDue(Time.unscaledTime)) TrySave();
         }
         private void FixedUpdate() => enemies?.Advance(rooms.CurrentRoom, flow.State == ApplicationState.Gameplay && !Life.Ended, Time.fixedDeltaTime);
+        internal bool TrySave()
+        {
+            try { SaveCurrent(); return true; }
+            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
+            { HealthFailure = "Progress could not be saved. Check storage availability."; HealthChanged?.Invoke(); return false; }
+        }
+        private void OnApplicationPause(bool paused) { if (paused && Life != null) TrySave(); }
+        private void OnApplicationQuit() { if (Life != null) TrySave(); }
         private void OnDestroy() { enemies?.Dispose(); if (Life != null) Life.Changed -= ApplyLife; }
         private void LateUpdate()
         {
@@ -140,6 +154,8 @@ namespace SpaceCrawler.Gameplay
                 input.SampleAttack();
             }
             presentation.Present(Simulation.State);
+            if (savedAttackCount != combat.Simulation.AcceptedAttackCount)
+            { savedAttackCount = combat.Simulation.AcceptedAttackCount; TrySave(); }
         }
     }
 }

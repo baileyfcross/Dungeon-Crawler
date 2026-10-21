@@ -42,6 +42,13 @@ namespace SpaceCrawler.Core
             Health = new HealthSimulation(identity.Damageable, maximumHealth);
         }
 
+        public void RestoreHealth(int current, int maximum)
+        {
+            if (Revision != 1 || maximum != Health.Maximum) throw new ArgumentException("Enemy restore requires fresh matching authoring.");
+            Health.RestoreCurrent(current); Lifecycle = current == 0 ? EnemyLifecycle.Dead : EnemyLifecycle.Alive;
+            AggroTarget = null; Revision++; Changed?.Invoke();
+        }
+
         public bool TryApplyDamage(EnemyIdentity destination, CombatFaction sourceFaction, DamageRequest request, out DamageResult result)
         {
             result = default;

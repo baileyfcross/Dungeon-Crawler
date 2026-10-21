@@ -148,7 +148,7 @@ namespace SpaceCrawler.Tests.EditMode
 
         [TestCase(-1)]
         [TestCase(0)]
-        [TestCase(2)]
+        [TestCase(3)]
         public void UnsupportedGenerationVersionsAreRejected(int version)
             => Assert.Throws<ArgumentOutOfRangeException>(() => new RunGenerator().Generate(0, DefaultConfiguration(), version));
 

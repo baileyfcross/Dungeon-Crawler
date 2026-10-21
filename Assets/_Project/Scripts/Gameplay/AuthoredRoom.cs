@@ -14,6 +14,8 @@ namespace SpaceCrawler.Gameplay
         [SerializeField] private Transform entryAnchor, playerSpawnAnchor, contentRoot;
         [SerializeField] private Transform playerOneSpawnAnchor, playerTwoSpawnAnchor;
         [SerializeField] private RoomExitTrigger singleExit, leftExit, rightExit;
+        [SerializeField] private RoomExitTrigger[] cardinalExits = Array.Empty<RoomExitTrigger>();
+        public IReadOnlyList<RoomExitTrigger> CardinalExits => cardinalExits;
         [SerializeField] private DamageableTarget[] targets;
         [SerializeField] private EnemySpawn[] enemySpawns = Array.Empty<EnemySpawn>();
         private IReadOnlyList<DamageableTarget> combatTargets;
@@ -64,6 +66,14 @@ namespace SpaceCrawler.Gameplay
                 RequireChild(collision);
                 if (collision.isTrigger || collision.attachedRigidbody != null || !collision.enabled)
                     throw new InvalidOperationException("Room collision must be enabled, solid, and static.");
+            }
+            if (cardinalExits.Length != 0 && cardinalExits.Length != 4) throw new InvalidOperationException("Invalid cardinal door list.");
+            var doorIds = new HashSet<RoomExitTrigger>();
+            foreach (var exit in cardinalExits)
+            {
+                RequireChild(exit); RequireChild(exit.Trigger);
+                if (!doorIds.Add(exit) || !exit.Trigger.isTrigger || exit.Trigger.attachedRigidbody != null || !exit.Trigger.enabled)
+                    throw new InvalidOperationException("Invalid cardinal door collider.");
             }
             var identities = new HashSet<DamageableIdentity>();
             var shapes = new HashSet<Collider2D>();
@@ -137,22 +147,54 @@ namespace SpaceCrawler.Gameplay
                 throw new InvalidOperationException("Multiplayer spawns must be separate, safe and near the south entry.");
         }
 
+        public RoomExitTrigger ExitFor(RoomConnection edge, IReadOnlyList<RoomConnection> choices)
+        {
+            if (edge.FromPort >= 0)
+            { if (cardinalExits.Length != 4) throw new InvalidOperationException("Four authored cardinal doors are required."); return cardinalExits[edge.FromPort]; }
+            if (choices.Count == 1) return singleExit;
+            return choices[0].To.Equals(edge.To) ? leftExit : rightExit;
+        }
+        public static string PortName(int port) => port == 0 ? "NORTH" : port == 1 ? "EAST" : port == 2 ? "SOUTH" : port == 3 ? "WEST" : "EXIT";
+        public Vector2 Arrival(int port, int slot = 0, int count = 1)
+        {
+            if (port < 0) return count == 1 ? (Vector2)playerSpawnAnchor.position : slot == 0 ? (Vector2)playerOneSpawnAnchor.position : (Vector2)playerTwoSpawnAnchor.position;
+            Vector2 position = cardinalExits[port].transform.position;
+            Vector2 inward = port == 0 ? Vector2.down : port == 1 ? Vector2.left : port == 2 ? Vector2.up : Vector2.right;
+            Vector2 tangent = new Vector2(-inward.y,inward.x);
+            position += inward * 2 + tangent * (count == 2 ? (slot == 0 ? -.8f : .8f) : 0);
+            if (!IsSafePosition(position)) throw new InvalidOperationException("Door arrival is obstructed.");
+            return position;
+        }
+        public void SuppressOccupiedExits(PlayerMotor[] motors)
+        {
+            Physics2D.SyncTransforms();
+            var exits = new List<RoomExitTrigger>(cardinalExits) { singleExit,leftExit,rightExit };
+            foreach (var exit in exits) if (exit.gameObject.activeSelf)
+                foreach (var motor in motors) foreach (var shape in motor.GetComponents<Collider2D>())
+                    if (exit.Trigger.Distance(shape).isOverlapped) exit.SuppressUntilDeparture(motor.Body);
+        }
+        public bool IsSafePosition(Vector2 position)
+        {
+            var local = transform.InverseTransformPoint(position);
+            var safe = new Rect(playableBounds.xMin+.6f,playableBounds.yMin+.6f,playableBounds.width-1.2f,playableBounds.height-1.2f);
+            if (!Finite(position) || !safe.Contains(local)) return false;
+            foreach (var collision in staticCollision)
+                if (collision.OverlapPoint(position) || Vector2.Distance(collision.ClosestPoint(position),position) < .5f) return false;
+            return true;
+        }
+        private void DisableExits()
+        { singleExit.DisableExit(); leftExit.DisableExit(); rightExit.DisableExit(); foreach (var exit in cardinalExits) exit.DisableExit(); }
+
         public void ConfigureSharedExits(IReadOnlyList<RoomConnection> choices, Action<RoomConnection, Collider2D, bool> presence)
         {
-            singleExit.DisableExit(); leftExit.DisableExit(); rightExit.DisableExit();
-            if (choices.Count == 1) singleExit.ConfigureReadiness(choices[0], presence);
-            else if (choices.Count == 2)
-            { leftExit.ConfigureReadiness(choices[0], presence); rightExit.ConfigureReadiness(choices[1], presence); }
-            else if (choices.Count != 0) throw new InvalidOperationException("Unsupported forward exit count.");
+            DisableExits();
+            foreach (var edge in choices) ExitFor(edge,choices).ConfigureReadiness(edge,presence);
         }
 
         public void ConfigureExits(IReadOnlyList<RoomConnection> choices, PlayerIdentity player, Rigidbody2D body, Func<ExitIntent, bool> request)
         {
-            singleExit.DisableExit(); leftExit.DisableExit(); rightExit.DisableExit();
-            if (choices.Count == 1) singleExit.Configure(player, body, choices[0], request);
-            else if (choices.Count == 2)
-            { leftExit.Configure(player, body, choices[0], request); rightExit.Configure(player, body, choices[1], request); }
-            else if (choices.Count != 0) throw new InvalidOperationException("Unsupported forward exit count.");
+            DisableExits();
+            foreach (var edge in choices) ExitFor(edge,choices).Configure(player,body,edge,request);
         }
     }
 }

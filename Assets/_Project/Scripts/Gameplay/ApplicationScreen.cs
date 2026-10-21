@@ -97,9 +97,10 @@ namespace SpaceCrawler.Gameplay
             for (var i = 0; i < progression.Choices.Count; i++)
             {
                 var next = session.Run.GetRoom(progression.Choices[i].To);
-                text.Append($"\n{(progression.Choices.Count == 1 ? "CENTER" : i == 0 ? "LEFT" : "RIGHT")} -> {next.Id} / {next.Category}");
+                text.Append($"\n{(progression.Choices[i].FromPort >= 0 ? AuthoredRoom.PortName(progression.Choices[i].FromPort) : progression.Choices.Count == 1 ? "CENTER" : i == 0 ? "LEFT" : "RIGHT")} -> {next.Id} / {next.Category}");
             }
-            if (progression.IsTerminal) text.Append("\nTerminal room reached. No forward exits.");
+            if (progression.IsTerminal) text.Append(session.Run.GenerationVersion == 1 ? "\nTerminal room reached. No forward exits." : "\nTerminal room reached. Connected rooms remain available.");
+            if (session.Persistence?.RecoveryMessage != null) text.Append("\n" + session.Persistence.RecoveryMessage);
             if (progression.Failure != null) text.Append("\nRoom loading failed: " + progression.Failure);
             label.text = text.ToString();
         }

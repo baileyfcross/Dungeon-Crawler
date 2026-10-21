@@ -51,7 +51,8 @@ namespace SpaceCrawler.Tests.PlayMode
             while (session.LevelNumber < 2 || session.Rooms.Progression.CurrentRoomId.Value == 0)
             {
                 var level = session.LevelNumber; var room = session.Rooms.Progression.CurrentRoomId;
-                var exit = session.Rooms.Progression.Choices.Count == 1 ? session.Rooms.CurrentRoom.SingleExit : session.Rooms.CurrentRoom.LeftExit;
+                var edge = session.Run.Route(room,session.Run.TerminalRoomId)[0];
+                var exit = session.Rooms.CurrentRoom.ExitFor(edge,session.Rooms.Progression.Choices);
                 session.Motor.PlaceAt(exit.transform.position);
                 yield return Until(() => session.LevelNumber != level || !session.Rooms.Progression.CurrentRoomId.Equals(room));
             }
@@ -71,7 +72,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(session.Sequence.CompletedRoutes.Count, Is.EqualTo(1));
             session.Combat.ClearRoom(); session.Rooms.AddCombatFixtureToCurrentRoom();
             session.Combat.RegisterRoomTargets(session.Rooms.CurrentRoom.CombatTargets);
-            Assert.That((Vector2)session.Motor.Body.position, Is.EqualTo((Vector2)session.Rooms.CurrentRoom.PlayerSpawnAnchor.position));
+            Assert.That((Vector2)session.Motor.Body.position, Is.EqualTo(new Vector2(saved.World.Players[0].Position.X,saved.World.Players[0].Position.Y)));
             Assert.That(session.Combat.Targets[0].Health.Current, Is.EqualTo(session.Combat.Targets[0].InitialHealth));
             Assert.That(session.Combat.Projectiles, Is.Empty);
         }

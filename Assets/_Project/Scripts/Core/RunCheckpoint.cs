@@ -9,8 +9,9 @@ namespace SpaceCrawler.Core
     /// <summary>Immutable room-entry data. Player slots are stable gameplay identities, not network IDs.</summary>
     public sealed class RunCheckpoint
     {
-        public const int SchemaVersion = 3;
+        public const int SchemaVersion = 4;
         public RunLifeSnapshot Life { get; }
+        public RunWorldSnapshot World { get; }
         public int SourceSchemaVersion { get; }
         public ulong RunSeed { get; }
         public int SequenceVersion { get; }
@@ -32,9 +33,9 @@ namespace SpaceCrawler.Core
             RunRoomId currentRoom, IReadOnlyList<RunRoomId> roomVisits, IReadOnlyList<string> equipmentIds,
             ulong? runSeed = null, int sequenceVersion = 0, int levelNumber = 1, IReadOnlyList<ulong> levelSeeds = null,
             IReadOnlyList<string> levelFingerprints = null, IReadOnlyList<IReadOnlyList<RunRoomId>> completedRoutes = null,
-            RunLifeSnapshot life = null, int sourceSchemaVersion = SchemaVersion)
+            RunLifeSnapshot life = null, int sourceSchemaVersion = SchemaVersion, RunWorldSnapshot world = null)
         {
-            if (sequenceVersion != 0 && sequenceVersion != RunSequence.CurrentVersion) throw new NotSupportedException("Saved level policy is not supported.");
+            if (sequenceVersion != 0 && sequenceVersion != 1 && sequenceVersion != RunSequence.CurrentVersion) throw new NotSupportedException("Saved level policy is not supported.");
             var levelCount = sequenceVersion == 0 ? 1 : RunSequence.LevelCount;
             if (levelNumber < 1 || levelNumber > levelCount) throw new ArgumentOutOfRangeException(nameof(levelNumber));
             levelSeeds = levelSeeds ?? new[] { seed }; levelFingerprints = levelFingerprints ?? new[] { fingerprint };
@@ -76,6 +77,8 @@ namespace SpaceCrawler.Core
             }
             Seed = seed; GenerationVersion = generationVersion; Fingerprint = fingerprint; Mode = mode;
             CurrentRoom = currentRoom; RoomVisits = Array.AsReadOnly(visits); EquipmentIds = Array.AsReadOnly(equipment);
+            World = world;
+            if (world != null && world.Players.Count != (int)mode) throw new ArgumentException("Saved pose slots do not match the session.");
             Life = life ?? RunLifeSnapshot.Fresh((int)mode); SourceSchemaVersion = sourceSchemaVersion;
             if (Life.Players.Count != (int)mode || new RunLife(Life).Ended)
                 throw new ArgumentException("Only an unfinished run can be checkpointed.");
@@ -87,7 +90,7 @@ namespace SpaceCrawler.Core
             foreach (var c in value) if (!(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f')) throw new ArgumentException("Invalid level fingerprint.");
         }
 
-        public static RunCheckpoint Capture(RunSequence sequence, RunProgression progression, SavedSessionMode mode, IReadOnlyList<string> equipment, RunLifeSnapshot life = null)
+        public static RunCheckpoint Capture(RunSequence sequence, RunProgression progression, SavedSessionMode mode, IReadOnlyList<string> equipment, RunLifeSnapshot life = null, RunWorldSnapshot world = null)
         {
             if (sequence == null || !ReferenceEquals(sequence.CurrentGraph, progression.Graph)
                 || (progression.State != RoomFlowState.Playing && progression.State != RoomFlowState.Terminal))
@@ -95,8 +98,8 @@ namespace SpaceCrawler.Core
             var seeds = new ulong[RunSequence.LevelCount]; var fingerprints = new string[RunSequence.LevelCount];
             for (var i = 0; i < seeds.Length; i++) { seeds[i] = sequence.Levels[i].Seed; fingerprints[i] = GraphFingerprint.Compute(sequence.Levels[i]); }
             return new RunCheckpoint(progression.Graph.Seed, progression.Graph.GenerationVersion, GraphFingerprint.Compute(progression.Graph),
-                mode, progression.CurrentRoomId, progression.VisitedRooms, equipment, sequence.Seed, RunSequence.CurrentVersion,
-                sequence.LevelNumber, seeds, fingerprints, sequence.CompletedRoutes, life);
+                mode, progression.CurrentRoomId, progression.VisitedRooms, equipment, sequence.Seed, sequence.Version,
+                sequence.LevelNumber, seeds, fingerprints, sequence.CompletedRoutes, life, SchemaVersion, world);
         }
     }
 }

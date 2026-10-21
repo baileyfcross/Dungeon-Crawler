@@ -50,14 +50,15 @@ namespace SpaceCrawler.Gameplay
                 while (session.LevelNumber < 2 || session.Rooms.Progression.CurrentRoomId.Value == 0)
                 {
                     var before = session.Rooms.Progression.CurrentRoomId; var level = session.LevelNumber;
-                    var exit = session.Rooms.Progression.Choices.Count == 1 ? session.Rooms.CurrentRoom.SingleExit : session.Rooms.CurrentRoom.LeftExit;
+                    var edge = session.Run.Route(before,session.Run.TerminalRoomId)[0];
+                    var exit = session.Rooms.CurrentRoom.ExitFor(edge,session.Rooms.Progression.Choices);
                     var target = (Vector2)exit.transform.position;
                     var deadline = Time.realtimeSinceStartupAsDouble + 15;
                     while (session.LevelNumber == level && session.Rooms.Progression.CurrentRoomId.Equals(before))
                     {
                         Check(Time.realtimeSinceStartupAsDouble < deadline, "physical room traversal");
                         var delta = target - session.Motor.Body.position;
-                        var direction = Mathf.Abs(delta.x) > .15f ? new Vector2(Mathf.Sign(delta.x), 0) : Vector2.up;
+                        var direction = Mathf.Abs(delta.x) > .15f ? new Vector2(Mathf.Sign(delta.x), 0) : new Vector2(0,Mathf.Sign(delta.y));
                         session.Simulation.RequestMove(new MoveIntent(session.Simulation.State.Player, new System.Numerics.Vector2(direction.x, direction.y)));
                         yield return null;
                     }
@@ -73,7 +74,9 @@ namespace SpaceCrawler.Gameplay
                     "run and level restored");
                 Check(session.Rooms.Progression.CurrentRoomId.Equals(expected.CurrentRoom)
                     && session.Rooms.Progression.RoomsEntered == expected.RoomVisits.Count, "room and history restored");
-                Check(Vector2.Distance(session.Motor.Body.position, session.Rooms.CurrentRoom.PlayerSpawnAnchor.position) < .001f, "entry spawn restored");
+                var pose = expected.World?.Players[0];
+                var expectedPosition = pose.HasValue ? new Vector2(pose.Value.Position.X,pose.Value.Position.Y) : (Vector2)session.Rooms.CurrentRoom.PlayerSpawnAnchor.position;
+                Check(Vector2.Distance(session.Motor.Body.position, expectedPosition) < .001f, "saved position restored");
                 Check(session.Combat.Projectiles.Count == 0, "no transient projectile restored");
                 foreach (var target in session.Combat.Targets) Check(target.Health.Current == target.InitialHealth, "room combat reset");
                 Check(session.Combat.Simulation.EquippedWeapon.Id == expected.EquipmentIds[0], "equipment restored");
@@ -96,7 +99,7 @@ namespace SpaceCrawler.Gameplay
             {
                 Check(saved != null && session.Rooms.Progression.CurrentRoomId.Equals(saved.CurrentRoom), "saved encounter room restored");
                 Check(session.Life[0].Current == saved.Life.Players[0].Current && session.Life[0].Current < 100, "enemy damage persists through Continue");
-                Check(session.Rooms.CurrentRoom.Encounter.Enemies.Count == 1 && session.Rooms.CurrentRoom.Encounter.Enemies[0].Target.Health.Current == 100, "enemy reset after Continue");
+                Check(session.Rooms.CurrentRoom.Encounter.Enemies.Count == 1 && session.Rooms.CurrentRoom.Encounter.Enemies[0].Target.Health.Current == 0, "enemy death persists after Continue");
                 Check(session.Life.RunXp == 0 && root.Profile.Experience == 0, "no unintended XP reward");
                 Debug.Log("[SaveValidation] MELEE-RESUME-PASS"); Application.Quit(0); yield break;
             }
@@ -106,19 +109,28 @@ namespace SpaceCrawler.Gameplay
                 var choices = session.Rooms.Progression.Choices; var index = 0;
                 while (index < choices.Count && !choices[index].To.Equals(edge.To)) index++;
                 Check(index < choices.Count, "route follows legal connection");
-                var target = choices.Count == 1 ? session.Rooms.CurrentRoom.SingleExit.transform.position
-                    : index == 0 ? session.Rooms.CurrentRoom.LeftExit.transform.position : session.Rooms.CurrentRoom.RightExit.transform.position;
+                var target = session.Rooms.CurrentRoom.ExitFor(choices[index],choices).transform.position;
                 var deadline = Time.realtimeSinceStartupAsDouble + 15;
                 while (session.Rooms.Progression.CurrentRoomId.Equals(edge.From))
                 {
                     Check(Time.realtimeSinceStartupAsDouble < deadline, "physical encounter traversal");
                     var delta = target - session.Motor.transform.position;
-                    var direction = Mathf.Abs(delta.x) > .15f ? new System.Numerics.Vector2(Mathf.Sign(delta.x), 0) : System.Numerics.Vector2.UnitY;
+                    var direction = Mathf.Abs(delta.x) > .15f ? new System.Numerics.Vector2(Mathf.Sign(delta.x), 0) : new System.Numerics.Vector2(0,Mathf.Sign(delta.y));
                     session.Simulation.RequestMove(new MoveIntent(new PlayerIdentity(1), direction)); yield return null;
                 }
                 session.Simulation.RequestMove(new MoveIntent(new PlayerIdentity(1), System.Numerics.Vector2.Zero)); yield return null;
             }
             var enemy = session.Rooms.CurrentRoom.Encounter.Enemies[0];
+            // Side-door arrivals can be outside detection range. Approach through normal movement requests.
+            var approachDeadline = Time.realtimeSinceStartupAsDouble+12;
+            while (Vector2.Distance(session.Motor.Body.position,new Vector2(0,3)) > .2f)
+            {
+                Check(Time.realtimeSinceStartupAsDouble < approachDeadline,"approach encounter");
+                var delta = new Vector2(0,3)-session.Motor.Body.position;
+                var direction = Mathf.Abs(delta.x) > .15f ? new System.Numerics.Vector2(Mathf.Sign(delta.x),0) : new System.Numerics.Vector2(0,Mathf.Sign(delta.y));
+                session.Simulation.RequestMove(new MoveIntent(new PlayerIdentity(1),direction)); yield return null;
+            }
+            session.Simulation.RequestMove(new MoveIntent(new PlayerIdentity(1),System.Numerics.Vector2.Zero));
             yield return Until(() => session.Life[0].Current < 100);
             if (mode == "melee-loss")
             {

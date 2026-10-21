@@ -47,6 +47,9 @@ namespace SpaceCrawler.Core
             Identity = identity; Maximum = maximum; Current = maximum;
         }
 
+        internal void RestoreCurrent(int value)
+        { if (value < 0 || value > Maximum) throw new ArgumentOutOfRangeException(nameof(value)); Current = value; }
+
         public bool TryApplyDamage(DamageRequest request, out DamageResult result)
         {
             result = default;

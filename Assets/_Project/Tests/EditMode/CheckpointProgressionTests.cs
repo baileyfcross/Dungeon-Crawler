@@ -17,7 +17,7 @@ namespace SpaceCrawler.Tests.EditMode
         }
         private static RunCheckpoint Snapshot()
         {
-            var run = new RunSequence(42, Catalog());
+            var run = new RunSequence(42, Catalog(), 1);
             var progress = new RunProgression(run.CurrentGraph, new PlayerIdentity(1)); progress.SetGameplayActive(true);
             progress.TryCompleteEntry(run.CurrentGraph.StartRoomId);
             while (!progress.IsTerminal) Step(progress);
@@ -50,7 +50,7 @@ namespace SpaceCrawler.Tests.EditMode
             var badGraph = new RunCheckpoint(good.Seed, good.GenerationVersion, good.Fingerprint, good.Mode, good.CurrentRoom,
                 good.RoomVisits, good.EquipmentIds, good.RunSeed, good.SequenceVersion, good.LevelNumber, good.LevelSeeds, fingerprints, good.CompletedRoutes);
             Assert.Throws<ArgumentException>(() => RunSequence.Restore(badGraph, Catalog()));
-            var graph = new RunSequence(good.RunSeed, Catalog()).Levels[0];
+            var graph = new RunSequence(good.RunSeed, Catalog(), 1).Levels[0];
             var badRoute = new RunCheckpoint(good.Seed, good.GenerationVersion, good.Fingerprint, good.Mode, good.CurrentRoom,
                 good.RoomVisits, good.EquipmentIds, good.RunSeed, good.SequenceVersion, good.LevelNumber, good.LevelSeeds, good.LevelFingerprints,
                 new[] { new[] { graph.StartRoomId, graph.TerminalRoomId } });

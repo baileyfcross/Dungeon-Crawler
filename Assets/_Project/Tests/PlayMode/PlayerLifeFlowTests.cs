@@ -71,6 +71,7 @@ namespace SpaceCrawler.Tests.PlayMode
         {
             Submit("new-game"); yield return Until(() => root.Flow.State == ApplicationState.Gameplay);
             var session = root.CurrentGameplay;
+            session.Motor.PlaceAt(new Vector2(1,2)); // Dirty state requires a real write, even with unchanged-state suppression.
             using (new FileStream(Path.Combine(directory, "run.save.lock"), FileMode.OpenOrCreate, FileAccess.Write, FileShare.None))
             {
                 LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex("Sharing violation"));

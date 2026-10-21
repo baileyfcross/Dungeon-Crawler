@@ -56,7 +56,7 @@ namespace SpaceCrawler.Tests.PlayMode
             yield return WaitFor(() => root.Flow.State == ApplicationState.Gameplay);
             session = root.CurrentGameplay;
             Assert.That(session.Run, Is.Not.SameAs(graph));
-            AssertEquivalent(session.Run, new RunGenerator().Generate(session.Run.Seed, session.Run.Configuration));
+            AssertEquivalent(session.Run, new RunGenerator().Generate(session.Run.Seed, session.Run.Configuration, session.Run.GenerationVersion));
         }
 
 #if UNITY_EDITOR

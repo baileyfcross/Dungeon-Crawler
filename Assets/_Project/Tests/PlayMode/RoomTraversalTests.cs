@@ -85,10 +85,10 @@ namespace SpaceCrawler.Tests.PlayMode
             {
                 yield return Frames(3);
                 var level = session.LevelNumber;
-                Assert.That(session.Run.Nodes.Count, Is.InRange(10, 17));
-                var destination = Rooms.Progression.Choices[0].To;
+                Assert.That(session.Run.Nodes.Count, Is.InRange(10, 25));
+                var destination = session.Run.Route(Rooms.Progression.CurrentRoomId,session.Run.TerminalRoomId)[0].To;
                 var nextLevel = session.Run.GetRoom(destination).IsTerminal && level < RunSequence.LevelCount;
-                var exit = Rooms.Progression.Choices.Count == 1 ? Rooms.CurrentRoom.SingleExit : Rooms.CurrentRoom.LeftExit;
+                var exit = Rooms.CurrentRoom.ExitFor(Rooms.Progression.Choices.First(e => e.To.Equals(destination)),Rooms.Progression.Choices);
                 session.Motor.PlaceAt(exit.transform.position);
                 yield return WaitFor(() => nextLevel ? session.LevelNumber == level + 1 && Rooms.Progression.CurrentRoomId.Value == 0
                     : Rooms.Progression.CurrentRoomId.Equals(destination));
@@ -97,7 +97,7 @@ namespace SpaceCrawler.Tests.PlayMode
             }
             Assert.That(session.LevelNumber, Is.EqualTo(3));
             Assert.That(root.CurrentScreen.View.Q<Label>("run-readout").text,
-                Does.Contain("Terminal room reached").And.Contain("No forward exits").And.Not.Contain("has been defined"));
+                Does.Contain("Terminal room reached").And.Contain("Connected rooms remain available").And.Not.Contain("has been defined"));
             Assert.That(root.Flow.State, Is.EqualTo(ApplicationState.Gameplay));
             Assert.That(session.Input.GameplayInputEnabled, Is.True);
             root.Flow.TryRequest(ApplicationCommand.ReturnToMainMenu);
@@ -275,11 +275,19 @@ namespace SpaceCrawler.Tests.PlayMode
                 "Only nonterminal Engine rooms receive the authored melee encounter.");
             var definition = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"Assets/_Project/Data/Rooms/{node.Category}.asset");
             Assert.That(Rooms.CurrentPrefab, Is.SameAs(definition.RoomPrefab));
-            Assert.That(session.Motor.Body.position, Is.EqualTo((Vector2)room.PlayerSpawnAnchor.position));
-            Assert.That(session.Simulation.State.Position, Is.EqualTo(new CoreVector(room.PlayerSpawnAnchor.position.x, room.PlayerSpawnAnchor.position.y)));
+            if (session.Run.GenerationVersion == 1) Assert.That(session.Motor.Body.position, Is.EqualTo((Vector2)room.PlayerSpawnAnchor.position));
+            else Assert.That(room.IsSafePosition(session.Motor.Body.position),Is.True);
+            Assert.That(session.Simulation.State.Position, Is.EqualTo(new CoreVector(session.Motor.Body.position.x,session.Motor.Body.position.y)));
             Assert.That(session.Motor.Body.linearVelocity, Is.EqualTo(Vector2.zero));
             Assert.That(Vector2.Distance(session.Follower.transform.position, session.Motor.transform.position), Is.LessThan(0.001f));
             Assert.That(Quaternion.Angle(session.Follower.transform.rotation, Quaternion.identity), Is.LessThan(0.001f));
+            if (session.Run.GenerationVersion >= 2)
+            {
+                Assert.That(new[] { room.SingleExit,room.LeftExit,room.RightExit }.Any(e => e.gameObject.activeSelf),Is.False);
+                Assert.That(room.CardinalExits.Count(e => e.gameObject.activeSelf),Is.EqualTo(choices.Count));
+                foreach (var edge in choices) Assert.That(room.ExitFor(edge,choices).Destination,Is.EqualTo(edge.To));
+                return;
+            }
             Assert.That(room.SingleExit.gameObject.activeSelf, Is.EqualTo(choices.Count == 1));
             Assert.That(room.LeftExit.gameObject.activeSelf, Is.EqualTo(choices.Count == 2));
             Assert.That(room.RightExit.gameObject.activeSelf, Is.EqualTo(choices.Count == 2));

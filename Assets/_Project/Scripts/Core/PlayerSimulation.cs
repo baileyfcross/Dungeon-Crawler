@@ -22,6 +22,12 @@ namespace SpaceCrawler.Core
             State = new PlayerState(player, Vector2.Zero, Vector2.Zero, Vector2.UnitX);
         }
 
+        public void RestoreAim(Vector2 aim)
+        {
+            if (!IsFinite(aim) || Math.Abs(aim.LengthSquared()-1) > .001f) throw new ArgumentException("Invalid restored aim.");
+            DesiredVelocity = Vector2.Zero; State = new PlayerState(State.Player,State.Position,Vector2.Zero,aim);
+        }
+
         public void SetActive(bool active)
         {
             this.active = active;

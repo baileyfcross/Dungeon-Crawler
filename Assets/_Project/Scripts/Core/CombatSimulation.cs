@@ -20,6 +20,13 @@ namespace SpaceCrawler.Core
             EquippedWeapon = startingWeapon;
         }
 
+        public void RestoreCooldown(float seconds)
+        {
+            if (float.IsNaN(seconds) || float.IsInfinity(seconds) || seconds < 0 || seconds > (EquippedWeapon?.Cooldown ?? 0))
+                throw new ArgumentOutOfRangeException(nameof(seconds));
+            CooldownRemaining = seconds;
+        }
+
         public void AdvanceTime(float deltaTime)
         {
             if (float.IsNaN(deltaTime) || float.IsInfinity(deltaTime) || deltaTime < 0)

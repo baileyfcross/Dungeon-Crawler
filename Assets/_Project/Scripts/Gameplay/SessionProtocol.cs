@@ -8,7 +8,7 @@ namespace SpaceCrawler.Gameplay
 
     [Serializable] public sealed class RunSessionDescriptor
     {
-        public int protocol = 6, generationVersion, currentRoom, destination, state;
+        public int protocol = 7, generationVersion, currentRoom, destination, state;
         public string runId;
         public int level = 1, sequenceVersion;
         public bool levels;
@@ -35,7 +35,7 @@ namespace SpaceCrawler.Gameplay
     {
         public uint Epoch;
         public ulong Tick;
-        public int CurrentRoom, State, RoomsEntered, LeftReady, RightReady, Level;
+        public int CurrentRoom, State, RoomsEntered, LeftReady, RightReady, ThirdReady, FourthReady, Level;
         public bool Running;
         public long RunXp;
     }
@@ -55,6 +55,7 @@ namespace SpaceCrawler.Gameplay
     {
         public uint Encounter, Revision;
         public int Spawn, Current, Maximum, Lifecycle, Aggro;
+        public bool Restored;
         public Vector2 Position;
         public int Behaviour;
         public Vector2 Facing;

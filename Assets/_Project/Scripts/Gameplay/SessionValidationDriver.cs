@@ -71,7 +71,8 @@ namespace SpaceCrawler.Gameplay
             for (var i = 0; i < 2; i++)
             {
                 var anchor = i == 0 ? room.PlayerOneSpawnAnchor : room.PlayerTwoSpawnAnchor;
-                Check(CoreVector.Distance(session.Players[i].State.Position, new CoreVector(anchor.position.x, anchor.position.y)) < .22f, "distinct mapped room spawn");
+                if (session.Run.GenerationVersion == 1) Check(CoreVector.Distance(session.Players[i].State.Position, new CoreVector(anchor.position.x, anchor.position.y)) < .22f, "distinct mapped room spawn");
+                else Check(room.IsSafePosition(new Vector2(session.Players[i].State.Position.X,session.Players[i].State.Position.Y)),"safe reciprocal arrival");
             }
         }
         private void Update()
@@ -86,6 +87,8 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             yield return Until(() => session.RoomReady, "initial room handshake");
+            if (SessionDiagnostics.Option("--session-validation") == "traversal" || SessionDiagnostics.Option("--session-validation") == "traversal-resume")
+            { yield return RunTraversal(); yield break; }
             if (SessionDiagnostics.Option("--session-validation") == "melee")
             { yield return RunMelee(); yield break; }
             if (SessionDiagnostics.Option("--session-validation") == "enemies")
@@ -139,22 +142,27 @@ namespace SpaceCrawler.Gameplay
             {
                 Check(++transitions <= 60, "bounded three-level route");
                 var before = session.CurrentRoom; var level = session.LevelNumber;
-                Check(session.Run.Nodes.Count >= 10 && session.Run.Nodes.Count <= 17, "total room bounds");
+                Check(session.Run.Nodes.Count >= 10 && session.Run.Nodes.Count <= 25, "total room bounds");
                 var choices = session.Run.Connections.Where(c => c.From.Equals(before)).ToArray();
-                var index = before.Value % choices.Length; var destination = choices[index].To;
+                var routeEdge = session.Run.Route(before,session.Run.TerminalRoomId)[0];
+                var index = Array.FindIndex(choices,e=>e.To.Equals(routeEdge.To)); var destination = choices[index].To;
                 var advances = level < 3 && session.Run.GetRoom(destination).IsTerminal;
-                if (!testedSplit && choices.Length == 2)
+                if (!testedSplit && choices.Length > 1)
                 {
-                    yield return Walk(Host ? -6 : 6, 13);
-                    yield return Until(() => session.Players[0].State.Position.X < -5.7f && session.Players[0].State.Position.Y > 12.7f
-                        && session.Players[1].State.Position.X > 5.7f && session.Players[1].State.Position.Y > 12.7f, "different physical exits reached");
+                    var firstDoor = session.Rooms.CurrentRoom.ExitFor(choices[0],choices).transform.position;
+                    var secondDoor = session.Rooms.CurrentRoom.ExitFor(choices[1],choices).transform.position;
+                    yield return Walk(Host ? firstDoor.x : secondDoor.x,Host ? firstDoor.y : secondDoor.y);
+                    yield return Until(() => CoreVector.Distance(session.Players[0].State.Position,new CoreVector(firstDoor.x,firstDoor.y)) < .3f
+                        && CoreVector.Distance(session.Players[1].State.Position,new CoreVector(secondDoor.x,secondDoor.y)) < .3f,"different physical exits reached");
                     yield return new WaitForSeconds(.3f);
-                    Check(session.LevelNumber == level && session.CurrentRoom.Equals(before), "different exits cannot transition");
+                    Check(session.LevelNumber == level && session.CurrentRoom.Equals(before),"different exits cannot transition");
                     Record("06-different-exits-no-transition");
                     index = 0; destination = choices[0].To; testedSplit = true;
-                    if (!Host) { yield return Walk(6, 11); yield return Walk(-6, 11); yield return Walk(-6, 13); }
+                    if (!Host) { yield return Walk(0,6); yield return Walk(firstDoor.x,firstDoor.y); }
                 }
-                else yield return Walk(choices.Length == 1 ? 0 : index == 0 ? -6 : 6, 13);
+                else { var door = session.Rooms.CurrentRoom.ExitFor(choices[index],choices).transform.position;
+                yield return Walk(door.x,door.y); }
+                advances = level < 3 && session.Run.GetRoom(destination).IsTerminal;
                 yield return Until(() => session.LevelNumber == (advances ? level + 1 : level)
                     && session.CurrentRoom.Equals(advances ? new RunRoomId(0) : destination) && session.RoomReady, "shared forward level/room transition");
                 yield return new WaitForSeconds(.15f); CheckSpawns();
@@ -172,7 +180,8 @@ namespace SpaceCrawler.Gameplay
                 yield return new WaitForSeconds(.25f);
             }
             Check(testedSplit, "split readiness exercised");
-            Check(!new[] { session.Rooms.CurrentRoom.SingleExit, session.Rooms.CurrentRoom.LeftExit, session.Rooms.CurrentRoom.RightExit }.Any(e => e.gameObject.activeSelf), "Terminal has no exits");
+            if (session.Run.GenerationVersion == 1) Check(!new[] { session.Rooms.CurrentRoom.SingleExit, session.Rooms.CurrentRoom.LeftExit, session.Rooms.CurrentRoom.RightExit }.Any(e => e.gameObject.activeSelf), "Legacy terminal has no exits");
+            else Check(session.Rooms.CurrentRoom.CardinalExits.Any(e=>e.gameObject.activeSelf),"terminal retains bidirectional travel");
             Aim(CoreVector.UnitY); Attack(); Move(Host ? -CoreVector.UnitX : CoreVector.UnitX);
             yield return new WaitForSeconds(.25f); Move(CoreVector.Zero);
             yield return new WaitForSeconds(.3f);
@@ -229,6 +238,65 @@ namespace SpaceCrawler.Gameplay
             if (!Host) { yield return new WaitForSeconds(1); Application.Quit(0); }
         }
 
+        private IEnumerator Door(RoomConnection edge)
+        {
+            var epoch = session.Epoch;
+            var choices = session.Run.Connections.Where(e=>e.From.Equals(edge.From)).ToArray();
+            var position = session.Rooms.CurrentRoom.ExitFor(edge,choices).transform.position;
+            yield return Walk(position.x,position.y);
+            yield return Until(() => session.Epoch > epoch && session.RoomReady && session.CurrentRoom.Equals(edge.To),"bidirectional shared travel");
+            yield return new WaitForSeconds(.2f);
+        }
+        private IEnumerator RunTraversal()
+        {
+            Local.Input.HandleFocus(true); flow.TryRequest(ApplicationCommand.Resume);
+            Check(session.Run.GenerationVersion == 2,"TinyKeep generation agreed");
+            if (SessionDiagnostics.Option("--session-validation") == "traversal-resume")
+            {
+                yield return Until(() => session.Rooms.CurrentRoom.Encounter.Enemies.Count == 1
+                    && session.Rooms.CurrentRoom.Encounter.Enemies[0].Target.DisplayedHealth == 0,"dead enemy restored on both peers");
+                Check(session.Vitals(0).Current == 1 && session.Vitals(1).State == PlayerLifeState.Downed,"per-run health restored");
+                Check(CoreVector.Distance(session.Players[0].State.Position,new CoreVector(-2,3)) < .02f
+                    && CoreVector.Distance(session.Players[1].State.Position,new CoreVector(2,3)) < .02f,"both exact positions restored");
+                Check(session.Players[0].State.AimDirection.Y > .99f && session.Players[1].State.AimDirection.Y < -.99f,"both aim directions restored");
+                Check(session.Players[1].ReviveProgress == 0,"revive hold cleared on Continue");
+                Record("TRAVERSAL-RESUME-PASS");
+                if (!Host) { yield return new WaitForSeconds(1); Application.Quit(0); }
+                yield break;
+            }
+            // Ordinary movement/aim/attack requests on each independent process.
+            yield return Walk(Host ? -3 : 3,2);
+            yield return Until(() => session.Players[0].State.Position.X < -2.7f && session.Players[1].State.Position.X > 2.7f,"independent movement");
+            Aim(Host ? CoreVector.UnitY : -CoreVector.UnitY); Attack();
+            yield return Until(() => session.Players.All(p => (Host ? p.Combat.Simulation.AcceptedAttackCount : p.LastSnapshot.Attacks) > 0),"both attacks replicated");
+            var start = session.CurrentRoom; var choices = session.Run.Connections.Where(e=>e.From.Equals(start)).ToArray();
+            var first = choices.First(e=>!session.Run.GetRoom(e.To).IsTerminal);
+            yield return Door(first);
+            var reverse = session.Run.Connections.Single(e=>e.From.Equals(first.To) && e.To.Equals(start));
+            yield return Door(reverse);
+            Check(session.CurrentRoom.Equals(start),"backtracking returns to same starting room");
+            var route = RouteToEngine(session.Run); Check(route != null,"authored encounter is reachable");
+            foreach (var edge in route) yield return Door(edge);
+            var encounter = session.CurrentRoom; var enemy = session.Rooms.CurrentRoom.Encounter.Enemies[0];
+            // Explicit fixture damage isolates persistence from combat pacing (combat has separate proofs).
+            if (Host) enemy.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1),10000,enemy.Target.Identity,100),out _);
+            yield return Until(() => enemy.Lifecycle == EnemyLifecycle.Dead,"authoritative enemy death");
+            var leave = session.Run.Connections.First(e=>e.From.Equals(encounter) && !session.Run.GetRoom(e.To).IsTerminal);
+            yield return Door(leave);
+            yield return Door(session.Run.Connections.Single(e=>e.From.Equals(leave.To) && e.To.Equals(encounter)));
+            Check(session.Rooms.CurrentRoom.Encounter.Enemies[0].Target.DisplayedHealth == 0,"dead enemy stays dead after revisit");
+            if (Host)
+            {
+                session.Players[0].Motor.PlaceAt(new Vector2(-2,3)); session.Players[1].Motor.PlaceAt(new Vector2(2,3));
+                session.Players[0].Simulation.RestoreAim(CoreVector.UnitY); session.Players[1].Simulation.RestoreAim(-CoreVector.UnitY);
+                session.DamagePlayer(new PlayerIdentity(1),Guid.NewGuid(),session.Life[0].Current-1); session.DamagePlayer(new PlayerIdentity(2),Guid.NewGuid(),100);
+                session.SaveCurrent();
+            }
+            yield return Until(() => session.Vitals(0).Current == 1 && session.Vitals(1).State == PlayerLifeState.Downed,"persistent health fixture replicated");
+            Record("TRAVERSAL-PREPARE-PASS");
+            if (!Host) { yield return new WaitForSeconds(1); Application.Quit(0); }
+        }
+
         private IEnumerator RunMelee()
         {
             Local.Input.HandleFocus(true); flow.TryRequest(ApplicationCommand.Resume);
@@ -238,10 +306,12 @@ namespace SpaceCrawler.Gameplay
             {
                 var choices = session.Run.Connections.Where(connection => connection.From.Equals(edge.From)).ToArray();
                 var index = Array.FindIndex(choices, connection => connection.To.Equals(edge.To));
-                yield return Walk(choices.Length == 1 ? 0 : index == 0 ? -6 : 6, 13);
+                var door = session.Rooms.CurrentRoom.ExitFor(choices[index],choices).transform.position;
+                yield return Walk(door.x,door.y);
                 yield return Until(() => session.CurrentRoom.Equals(edge.To) && session.RoomReady, "physical traversal to authored encounter");
             }
             var enemy = session.Rooms.CurrentRoom.Encounter.Enemies[0]; var start = enemy.transform.position;
+            yield return Walk(Host ? -1 : 1,3);
             Check(enemy.Configuration != null && (Host ? enemy.Behaviour != null : enemy.Behaviour == null && enemy.Simulation == null), "melee authority boundary");
             yield return Until(() => Vector3.Distance(start, enemy.transform.position) > .5f, "moving enemy replicated");
             yield return Until(() => enemy.BehaviourState == EnemyBehaviourState.Windup && enemy.WindupProgress > .05f, "readable windup on each peer");
@@ -259,7 +329,8 @@ namespace SpaceCrawler.Gameplay
             Record("MELEE-DEATH-PASS");
             var before = session.CurrentRoom; var oldModel = enemy.Simulation;
             var exits = session.Run.Connections.Where(edge => edge.From.Equals(before)).ToArray();
-            yield return Walk(exits.Length == 1 ? 0 : -6, 13);
+            var exitPosition = session.Rooms.CurrentRoom.ExitFor(exits[0],exits).transform.position;
+            yield return Walk(exitPosition.x,exitPosition.y);
             yield return Until(() => !session.CurrentRoom.Equals(before) && session.RoomReady, "shared transition and enemy cleanup");
             Check(!Host || oldModel.Lifecycle == EnemyLifecycle.Despawned, "old encounter retired");
             Check(session.Rooms.RoomContainer.childCount == 1 && session.RunXp == 0, "one room and no unintended XP");
@@ -270,12 +341,13 @@ namespace SpaceCrawler.Gameplay
         public static List<RoomConnection> RouteToEngine(DungeonGraph graph)
         {
             var queue = new Queue<List<RoomConnection>>(); queue.Enqueue(new List<RoomConnection>());
+            var visited = new HashSet<RunRoomId> { graph.StartRoomId };
             List<RoomConnection> route = null;
             while (queue.Count > 0)
             {
                 var path = queue.Dequeue(); var node = path.Count == 0 ? graph.StartRoomId : path[path.Count - 1].To;
                 if (graph.GetRoom(node).Category == RoomCategory.Engine && !graph.GetRoom(node).IsTerminal) { route = path; break; }
-                foreach (var edge in graph.Connections.Where(edge => edge.From.Equals(node)))
+                foreach (var edge in graph.Connections.Where(edge => edge.From.Equals(node) && !graph.GetRoom(edge.To).IsTerminal && visited.Add(edge.To)))
                 { var next = new List<RoomConnection>(path) { edge }; queue.Enqueue(next); }
             }
             return route;
@@ -309,7 +381,8 @@ namespace SpaceCrawler.Gameplay
             Record("ENEMY-DESPAWN-PASS");
             var before = session.CurrentRoom; var level = session.LevelNumber;
             var choices = session.Run.Connections.Where(c => c.From.Equals(before)).ToArray();
-            yield return Walk(choices.Length == 1 ? 0 : -6, 13);
+            var exitPosition = session.Rooms.CurrentRoom.ExitFor(choices[0],choices).transform.position;
+            yield return Walk(exitPosition.x,exitPosition.y);
             yield return Until(() => !session.CurrentRoom.Equals(before) && session.RoomReady, "room transition after enemy despawn");
             var next = session.Rooms.CurrentRoom.Encounter.Enemies[0];
             Check(next.Identity.Encounter != identity.Encounter && next.Target.DisplayedHealth == next.Target.InitialHealth,

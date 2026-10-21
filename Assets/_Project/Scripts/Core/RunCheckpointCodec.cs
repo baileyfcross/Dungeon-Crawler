@@ -9,7 +9,7 @@ namespace SpaceCrawler.Core
     public static class RunCheckpointCodec
     {
         private const int Magic = 0x53435253;
-        public const int MaximumFileBytes = 65536;
+        public const int MaximumFileBytes = 1048576;
 
         public static byte[] Encode(RunCheckpoint checkpoint)
         {
@@ -36,6 +36,19 @@ namespace SpaceCrawler.Core
                     { writer.Write(player.Current); writer.Write(player.Maximum); writer.Write((int)player.State); }
                     for (var i = 0; i < checkpoint.Life.Players.Count; i++)
                     { writer.Write(checkpoint.Life.Profiles[i].ToByteArray()); writer.Write(checkpoint.Life.Classes[i]); }
+                    writer.Write(checkpoint.World != null);
+                    if (checkpoint.World != null)
+                    {
+                        foreach (var pose in checkpoint.World.Players)
+                        { WriteVector(writer,pose.Position); WriteVector(writer,pose.Aim); writer.Write(pose.Cooldown); }
+                        writer.Write(checkpoint.World.Rooms.Count);
+                        foreach (var room in checkpoint.World.Rooms)
+                        {
+                            writer.Write(room.Level); writer.Write(room.Room.Value); writer.Write(room.Enemies.Count);
+                            foreach (var enemy in room.Enemies)
+                            { writer.Write(enemy.Spawn); writer.Write(enemy.Health); writer.Write(enemy.Maximum); WriteVector(writer,enemy.Position); WriteVector(writer,enemy.Facing); }
+                        }
+                    }
                 }
                 payload = stream.ToArray();
             }
@@ -59,7 +72,7 @@ namespace SpaceCrawler.Core
             {
                 if (reader.ReadInt32() != Magic) throw new InvalidDataException("Saved run format is not recognized.");
                 var schema = reader.ReadInt32();
-                if (schema != 2 && schema != RunCheckpoint.SchemaVersion) throw new NotSupportedException("Saved run version is not supported.");
+                if (schema != 2 && schema != 3 && schema != RunCheckpoint.SchemaVersion) throw new NotSupportedException("Saved run version is not supported.");
                 var length = reader.ReadInt32();
                 if (length < 0 || length != bytes.Length - 44) throw new InvalidDataException("Saved run is incomplete.");
                 var payload = reader.ReadBytes(length);
@@ -74,6 +87,9 @@ namespace SpaceCrawler.Core
                 return ReadPayload(payload, schema);
             }
         }
+
+        private static void WriteVector(BinaryWriter writer, System.Numerics.Vector2 vector) { writer.Write(vector.X); writer.Write(vector.Y); }
+        private static System.Numerics.Vector2 ReadVector(BinaryReader reader) => new System.Numerics.Vector2(reader.ReadSingle(),reader.ReadSingle());
 
         private static RunCheckpoint ReadPayload(byte[] bytes, int schema)
         {
@@ -125,9 +141,27 @@ namespace SpaceCrawler.Core
                     for (var i = 0; i < players; i++) { profiles[i] = new Guid(reader.ReadBytes(16)); classes[i] = reader.ReadString(); }
                     life = new RunLifeSnapshot(id, xp, vitals, profiles, classes);
                 }
+                RunWorldSnapshot world = null;
+                if (schema >= 4 && reader.ReadBoolean())
+                {
+                    var poses = new SavedPlayerPose[players];
+                    for (int i = 0; i < players; i++) poses[i] = new SavedPlayerPose(ReadVector(reader),ReadVector(reader),reader.ReadSingle());
+                    int roomCount = reader.ReadInt32();
+                    if (roomCount < 0 || roomCount > 75) throw new InvalidDataException("Invalid saved room count.");
+                    var rooms = new SavedRoomState[roomCount];
+                    for (int i = 0; i < roomCount; i++)
+                    {
+                        int roomLevel = reader.ReadInt32(); var roomId = new RunRoomId(reader.ReadInt32()); int enemyCount = reader.ReadInt32();
+                        if (enemyCount < 0 || enemyCount > 32) throw new InvalidDataException("Invalid saved enemy count.");
+                        var enemies = new SavedEnemy[enemyCount];
+                        for (int j = 0; j < enemyCount; j++) enemies[j] = new SavedEnemy(reader.ReadInt32(),reader.ReadInt32(),reader.ReadInt32(),ReadVector(reader),ReadVector(reader));
+                        rooms[i] = new SavedRoomState(roomLevel,roomId,enemies);
+                    }
+                    world = new RunWorldSnapshot(poses,rooms);
+                }
                 if (stream.Position != stream.Length) throw new InvalidDataException("Saved run contains unexpected data.");
                 return new RunCheckpoint(seed, generation, fingerprint, mode, current, visits, equipment,
-                    runSeed, sequenceVersion, level, seeds, fingerprints, routes, life, schema);
+                    runSeed, sequenceVersion, level, seeds, fingerprints, routes, life, schema, world);
             }
         }
     }

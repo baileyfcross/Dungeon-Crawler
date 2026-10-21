@@ -13,6 +13,7 @@ namespace SpaceCrawler.Gameplay
         private GameplaySession session;
         private ApplicationFlow flow;
         private uint encounterIncarnation;
+        private int arrivalPort = -1;
         public Transform RoomContainer => roomContainer;
         public AuthoredRoom CurrentRoom { get; private set; }
         public AuthoredRoom CurrentPrefab { get; private set; }
@@ -92,7 +93,13 @@ namespace SpaceCrawler.Gameplay
 
         public bool RequestExit(ExitIntent intent)
         {
-            if (Progression == null || !session.Simulation.IsActive || !Progression.TryRequestExit(intent)) return false;
+            if (Progression == null || !session.Simulation.IsActive) return false;
+            // Save source state before accepting a transition. Failure leaves the source intact.
+            if (!System.Linq.Enumerable.Any(Progression.Choices,e => e.To.Equals(intent.Destination)) || !intent.CurrentRoom.Equals(Progression.CurrentRoomId)
+                || !intent.Player.Equals(Progression.Player) || !Progression.GameplayActive) return false;
+            if (!session.TrySave()) return false;
+            if (!Progression.TryRequestExit(intent)) return false;
+            foreach (var edge in Progression.Choices) if (edge.To.Equals(intent.Destination)) arrivalPort = edge.ToPort;
             EnterRoom(Progression.AcceptedDestination.Value);
             return true;
         }
@@ -114,14 +121,18 @@ namespace SpaceCrawler.Gameplay
                 CurrentRoom.ConfigureExits(Progression.ConnectionsFrom(destination), Progression.Player, session.Motor.Body,
                     intent => ReferenceEquals(CurrentRoom, sourceRoom) && RequestExit(intent));
                 session.Combat.RegisterRoomTargets(CurrentRoom.CombatTargets);
-                session.Motor.PlaceAt(CurrentRoom.PlayerSpawnAnchor.position);
+                session.Persistence.RestoreRoom(session.LevelNumber,destination,CurrentRoom,() => session.TrySave());
+                session.Persistence.PlacePlayers(CurrentRoom,arrivalPort,new[] { session.Motor },new[] { session.Simulation },new[] { session.Combat });
+                arrivalPort = -1;
                 session.Motor.Body.simulated = true;
                 Physics2D.SyncTransforms();
+                CurrentRoom.SuppressOccupiedExits(new[] { session.Motor });
                 session.Motor.CaptureState();
                 session.Follower.Follow();
                 if (!Progression.TryCompleteEntry(destination)) throw new InvalidOperationException("Room entry does not match the accepted destination.");
                 if (session.TryAdvanceLevel(Progression))
                 {
+                    arrivalPort = -1;
                     Progression = new RunProgression(session.Run, session.Simulation.State.Player);
                     ApplyApplicationState(flow.State);
                     EnterRoom(session.Run.StartRoomId);

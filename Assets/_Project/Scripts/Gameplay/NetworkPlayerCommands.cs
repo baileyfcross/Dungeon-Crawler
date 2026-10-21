@@ -11,7 +11,7 @@ namespace SpaceCrawler.Gameplay
         private readonly Action<PlayerInputMessage, bool> submit;
         private Vector2 move, aim = Vector2.right;
         private ulong sequence, attackSequence;
-        private bool interactHeld;
+        private bool interactHeld, hasAim;
         public PlayerState State => state();
         public bool InputActive { get; private set; }
         public NetworkPlayerCommands(Func<PlayerState> state, Func<uint> epoch, Action<PlayerInputMessage, bool> submit)
@@ -30,7 +30,7 @@ namespace SpaceCrawler.Gameplay
         public bool Aim(AimIntent intent)
         {
             if (!InputActive || !State.Player.Equals(intent.Player)) return false;
-            if (intent.WorldDirection.LengthSquared() >= 0.000001f) aim = new Vector2(intent.WorldDirection.X, intent.WorldDirection.Y);
+            if (intent.WorldDirection.LengthSquared() >= 0.000001f) { aim = new Vector2(intent.WorldDirection.X, intent.WorldDirection.Y); hasAim = true; }
             return true;
         }
         public bool Attack(AttackIntent intent)
@@ -49,7 +49,7 @@ namespace SpaceCrawler.Gameplay
         {
             submit(new PlayerInputMessage { Epoch = epoch(), Sequence = ++sequence, AttackSequence = attack ? ++attackSequence : 0,
                 ClaimedPlayer = State.Player.Value, Active = InputActive, InteractHeld = InputActive && interactHeld,
-                Move = InputActive ? move : Vector2.zero, Aim = aim }, reliable);
+                Move = InputActive ? move : Vector2.zero, Aim = hasAim ? aim : new Vector2(State.AimDirection.X,State.AimDirection.Y) }, reliable);
         }
     }
 }

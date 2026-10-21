@@ -15,9 +15,9 @@ namespace SpaceCrawler.Gameplay
     /// <summary>Two-player session adapter: sender-authenticated requests in, authoritative state out.</summary>
     public sealed class MultiplayerSession : MonoBehaviour
     {
-        private const string InputMessage = "session.input.v6", DescriptorMessage = "session.run.v6",
-            AckMessage = "session.room-ready.v6", StateMessage = "session.state.v6",
-            EndMessage = "session.end.v6", RewardAckMessage = "session.reward-ready.v6";
+        private const string InputMessage = "session.input.v7", DescriptorMessage = "session.run.v7",
+            AckMessage = "session.room-ready.v7", StateMessage = "session.state.v7",
+            EndMessage = "session.end.v7", RewardAckMessage = "session.reward-ready.v7";
         [SerializeField] private NetworkManager network;
         [SerializeField] private UnityTransport transport;
         [SerializeField] private NetworkPlayerRig playerPrefab;
@@ -45,6 +45,9 @@ namespace SpaceCrawler.Gameplay
         private WeaponConfiguration weapon;
         private RunSequence sequence;
         private EnemyCombatSystem enemies;
+        private RunWorldPersistence persistence;
+        private int arrivalPort = -1;
+        private long savedAttackCount;
         private Action<RunCheckpoint> commitCheckpoint;
         private Action<RunEndReceipt> endRun;
         private Func<Guid, IReadOnlyList<RunEndReceipt>> pendingRewards;
@@ -101,6 +104,7 @@ namespace SpaceCrawler.Gameplay
             Mode = mode; flow = localFlow; priorBackground = Application.runInBackground; Application.runInBackground = true;
             weapon = (useBlaster || (Debug.isDebugBuild && SessionDiagnostics.Option("--session-weapon") == "blaster") ? blaster : knife).CreateConfiguration();
             commitCheckpoint = mode == SessionRole.Host ? save : null;
+            persistence = new RunWorldPersistence(checkpoint?.World);
             this.profileId = profileId ?? (checkpoint != null && checkpoint.Life.Profiles[0] != Guid.Empty ? checkpoint.Life.Profiles[0] : Guid.NewGuid());
             endRun = finish; this.pendingRewards = pendingRewards; this.acknowledgeReward = acknowledgeReward;
             if (checkpoint != null)
@@ -116,7 +120,7 @@ namespace SpaceCrawler.Gameplay
             network.NetworkConfig.AutoSpawnPlayerPrefabClientSide = false;
             network.NetworkConfig.PlayerPrefab = null;
             network.NetworkConfig.TickRate = 30;
-            network.NetworkConfig.ConnectionData = Encoding.ASCII.GetBytes("SpaceCrawlerSession6");
+            network.NetworkConfig.ConnectionData = Encoding.ASCII.GetBytes("SpaceCrawlerSession7");
             network.ConnectionApprovalCallback = Approve;
             network.OnClientConnectedCallback += Connected;
             network.OnClientDisconnectCallback += Disconnected;
@@ -154,7 +158,7 @@ namespace SpaceCrawler.Gameplay
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             var validation = SessionDiagnostics.Option("--session-validation");
             if (validation == "run" || validation == "checkpoint" || validation == "resume" || validation == "enemies"
-                || validation == "health" || validation == "health-checkpoint" || validation == "health-resume" || validation == "melee") gameObject.AddComponent<SessionValidationDriver>().Bind(this, flow);
+                || validation == "traversal" || validation == "traversal-resume" || validation == "health" || validation == "health-checkpoint" || validation == "health-resume" || validation == "melee") gameObject.AddComponent<SessionValidationDriver>().Bind(this, flow);
 #endif
         }
 
@@ -204,7 +208,7 @@ namespace SpaceCrawler.Gameplay
 
         private void Approve(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
         {
-            response.Approved = Encoding.ASCII.GetString(request.Payload) == "SpaceCrawlerSession6"
+            response.Approved = Encoding.ASCII.GetString(request.Payload) == "SpaceCrawlerSession7"
                 && (request.ClientNetworkId == NetworkManager.ServerClientId || network.ConnectedClientsIds.Count < 2);
             response.CreatePlayerObject = false;
             response.Pending = false;
@@ -235,12 +239,15 @@ namespace SpaceCrawler.Gameplay
             rooms.LoadSharedRoom(Run, destination, Progression.ConnectionsFrom(destination),
                 (edge, collider, present) => { if (epoch == entryEpoch) ObserveExit(edge, collider, present); });
             InitializeEncounter(true, Run.GetRoom(destination).IsTerminal);
+            persistence.RestoreRoom(LevelNumber,destination,rooms.CurrentRoom,() => TrySave());
             for (var i = 0; i < 2; i++)
             {
                 players[i].Combat.RegisterRoomTargets(rooms.CurrentRoom.CombatTargets, i == 0);
                 var anchor = i == 0 ? rooms.CurrentRoom.PlayerOneSpawnAnchor : rooms.CurrentRoom.PlayerTwoSpawnAnchor;
-                players[i].Motor.PlaceAt(anchor.position); players[i].Motor.Body.simulated = true;
+                players[i].Motor.Body.simulated = true;
             }
+            persistence.PlacePlayers(rooms.CurrentRoom,arrivalPort,players.Select(p => p.Motor).ToArray(),players.Select(p => p.Simulation).ToArray(),players.Select(p => p.Combat).ToArray());
+            arrivalPort = -1;
             loadedRoom = destination;
             Physics2D.SyncTransforms(); follower.Follow();
             Readiness.Reset(destination, Progression.ConnectionsFrom(destination), Authority != null && Authority.BothConnected);
@@ -257,7 +264,9 @@ namespace SpaceCrawler.Gameplay
 
         private void BeginTransition(RunRoomId destination)
         {
+            if (!TrySave()) return;
             if (!Progression.TryRequestExit(new ExitIntent(Progression.Player, Progression.CurrentRoomId, destination))) return;
+            arrivalPort = Progression.Choices.First(e => e.To.Equals(destination)).ToPort;
             epoch++;
             if (!Progression.TryBeginAcceptedEntry()) { Fail("Accepted shared room entry failed."); return; }
             if (sequence != null && Run.GetRoom(destination).IsTerminal && LevelNumber < RunSequence.LevelCount)
@@ -267,7 +276,7 @@ namespace SpaceCrawler.Gameplay
                 Run = sequence.CurrentGraph; Fingerprint = GraphFingerprint.Compute(Run);
                 Progression = new RunProgression(Run, new PlayerIdentity(1));
                 Progression.SetGameplayActive(true);
-                destination = Run.StartRoomId;
+                destination = Run.StartRoomId; arrivalPort = -1;
             }
             LoadHostRoom(destination);
             SendDescriptor();
@@ -280,7 +289,7 @@ namespace SpaceCrawler.Gameplay
                 runId = runId.ToString("N"),
                 epoch = epoch, currentRoom = Progression.CurrentRoomId.Value, destination = loadedRoom.Value,
                 state = (int)Progression.State, weapon = weapon.Id, level = LevelNumber,
-                levels = sequence != null, sequenceVersion = sequence != null ? RunSequence.CurrentVersion : 0,
+                levels = sequence != null, sequenceVersion = sequence != null ? sequence.Version : 0,
                 runSeed = (sequence?.Seed ?? Run.Seed).ToString() };
             SendJson(DescriptorMessage, remoteSender.Value, JsonUtility.ToJson(descriptor));
         }
@@ -292,7 +301,7 @@ namespace SpaceCrawler.Gameplay
             {
                 reader.ReadValueSafe(out string json);
                 var incoming = JsonUtility.FromJson<RunSessionDescriptor>(json);
-                if (incoming.protocol != 6 || incoming.epoch <= epoch) return;
+                if (incoming.protocol != 7 || incoming.epoch <= epoch) return;
                 var incomingId = Guid.ParseExact(incoming.runId, "N");
                 if (incomingId == Guid.Empty || (runId != Guid.Empty && runId != incomingId)) throw new InvalidOperationException("Run identity mismatch.");
                 runId = incomingId;
@@ -303,7 +312,7 @@ namespace SpaceCrawler.Gameplay
                     throw new InvalidOperationException("Run sequence descriptor mismatch.");
                 if (incoming.levels && sequence == null)
                     sequence = new RunSequence(ulong.Parse(incoming.runSeed), generation.CreateConfiguration(), incoming.sequenceVersion);
-                if (incoming.levels && incoming.sequenceVersion != RunSequence.CurrentVersion)
+                if (incoming.levels && incoming.sequenceVersion != sequence.Version)
                     throw new InvalidOperationException("Run sequence version mismatch.");
                 if (Run != null && incoming.level > descriptor.level && incoming.destination != 0)
                     throw new InvalidOperationException("Next level must begin in its starting room.");
@@ -397,7 +406,8 @@ namespace SpaceCrawler.Gameplay
             var header = new SessionStateHeader { Epoch = epoch, Tick = ++tick, CurrentRoom = Progression.CurrentRoomId.Value,
                 State = (int)Progression.State, RoomsEntered = Progression.RoomsEntered, Running = roomReady,
                 LeftReady = choices.Count > 0 ? Readiness.Count(choices[0].To) : 0,
-                RightReady = choices.Count > 1 ? Readiness.Count(choices[1].To) : 0, Level = LevelNumber, RunXp = Life.RunXp };
+                RightReady = choices.Count > 1 ? Readiness.Count(choices[1].To) : 0,
+                ThirdReady = choices.Count > 2 ? Readiness.Count(choices[2].To) : 0, FourthReady = choices.Count > 3 ? Readiness.Count(choices[3].To) : 0, Level = LevelNumber, RunXp = Life.RunXp };
             lastHeader = header;
             using (var writer = new FastBufferWriter(8192, Allocator.Temp))
             {
@@ -409,7 +419,7 @@ namespace SpaceCrawler.Gameplay
                 writer.WriteValueSafe(rooms.CurrentRoom.Encounter.Enemies.Count);
                 foreach (var enemy in rooms.CurrentRoom.Encounter.Enemies)
                     writer.WriteValueSafe(new EnemyStateSnapshot { Encounter = enemy.Identity.Encounter, Spawn = enemy.Identity.Spawn,
-                        Revision = enemy.Revision, Current = enemy.Target.Health.Current, Maximum = enemy.Target.Health.Maximum,
+                        Restored = enemy.Restored, Revision = enemy.Revision, Current = enemy.Target.Health.Current, Maximum = enemy.Target.Health.Maximum,
                         Lifecycle = (int)enemy.Lifecycle, Aggro = enemy.AggroPlayer, Position = enemy.transform.position,
                         Behaviour = (int)enemy.BehaviourState, Facing = enemy.Facing, WindupProgress = enemy.WindupProgress, StrikeSequence = enemy.StrikeSequence });
                 var projectiles = players.Sum(p => p.Combat.Projectiles.Count);
@@ -450,7 +460,7 @@ namespace SpaceCrawler.Gameplay
                         || float.IsNaN(enemy.Position.sqrMagnitude) || float.IsInfinity(enemy.Position.sqrMagnitude))
                         throw new InvalidOperationException("Enemy identity or position mismatch.");
                     enemies[i].ApplySnapshot(new EnemyIdentity(enemy.Encounter, enemy.Spawn), (EnemyLifecycle)enemy.Lifecycle,
-                        enemy.Current, enemy.Maximum, enemy.Revision, enemy.Aggro);
+                        enemy.Current, enemy.Maximum, enemy.Revision, enemy.Aggro, enemy.Restored);
                     enemies[i].transform.position = enemy.Position;
                     enemies[i].ApplyBehaviourSnapshot(enemy.Behaviour, enemy.Facing, enemy.WindupProgress, enemy.StrikeSequence);
                 }
@@ -481,6 +491,7 @@ namespace SpaceCrawler.Gameplay
             if (stopped || flow == null) return;
             if (stopRequested) { Stop(); flow.TryRequest(ApplicationCommand.ReturnToMainMenu); return; }
             var now = Time.realtimeSinceStartupAsDouble;
+            if (Mode == SessionRole.Host && persistence.AutosaveDue(Time.unscaledTime)) TrySave();
             var local = players[LocalPlayer - 1];
             if (PollLocalDevices && local != null) local.Input.SampleMovement();
             if (commands != null && now >= nextInput) { nextInput = now + 1.0 / 30; commands.SendMovement(); }
@@ -522,6 +533,8 @@ namespace SpaceCrawler.Gameplay
                 local.Input.SampleAttack();
             }
             foreach (var rig in players) rig.Present();
+            if (Mode == SessionRole.Host && savedAttackCount != players.Sum(p => p.Combat.Simulation.AcceptedAttackCount))
+            { savedAttackCount = players.Sum(p => p.Combat.Simulation.AcceptedAttackCount); TrySave(); }
             if (Mode == SessionRole.Host && Time.realtimeSinceStartupAsDouble >= nextSnapshot)
             { nextSnapshot = Time.realtimeSinceStartupAsDouble + 0.05; SendState(); }
         }
@@ -534,8 +547,8 @@ namespace SpaceCrawler.Gameplay
             text.AppendLine($"Seed={Run.Seed}; version={Run.GenerationVersion}; fingerprint={Fingerprint}; loaded={loadedRoom}; room={(Mode == SessionRole.Host ? Progression.CurrentRoomId.Value : lastHeader.CurrentRoom)}; state={(Mode == SessionRole.Host ? Progression.State : (RoomFlowState)lastHeader.State)}; entered={(Mode == SessionRole.Host ? Progression.RoomsEntered : lastHeader.RoomsEntered)}; roomChildren={rooms.RoomContainer.childCount}");
             var choices = Run.Connections.Where(c => c.From.Equals(loadedRoom)).ToArray();
             for (var i = 0; i < choices.Length; i++)
-                text.AppendLine($"Exit {(choices.Length == 1 ? "CENTER" : i == 0 ? "LEFT" : "RIGHT")} -> {choices[i].To}: {(Mode == SessionRole.Host ? Readiness.Count(choices[i].To) : i == 0 ? lastHeader.LeftReady : lastHeader.RightReady)}/2 ready");
-            if (Run.GetRoom(loadedRoom).IsTerminal) text.AppendLine("Terminal room reached. No forward exits.");
+                text.AppendLine($"Exit {(choices[i].FromPort >= 0 ? AuthoredRoom.PortName(choices[i].FromPort) : choices.Length == 1 ? "CENTER" : i == 0 ? "LEFT" : "RIGHT")} -> {choices[i].To}: {(Mode == SessionRole.Host ? Readiness.Count(choices[i].To) : i == 0 ? lastHeader.LeftReady : i == 1 ? lastHeader.RightReady : i == 2 ? lastHeader.ThirdReady : lastHeader.FourthReady)}/2 ready");
+            if (Run.GetRoom(loadedRoom).IsTerminal) text.AppendLine(Run.GenerationVersion == 1 ? "Terminal room reached. No forward exits." : "Terminal room reached. Connected rooms remain available.");
             foreach (var rig in players)
             {
                 var state = rig.State;
@@ -549,6 +562,7 @@ namespace SpaceCrawler.Gameplay
             if (Authority != null) text.AppendLine($"OwnershipRejected={Authority.RejectedOwnership}; staleRejected={Authority.RejectedStale}; inputTimeouts={Authority.TimedOut}");
             for (var i = 0; i < 2; i++) text.AppendLine($"P{i + 1} health={players[i].Vitals.Current}/{players[i].Vitals.Maximum}; life={players[i].Vitals.State}; revive={players[i].ReviveProgress:F2}");
             text.AppendLine($"RunID={runId:N}; RunXP={RunXp}; ended={RunEnded}; healthFailure={HealthFailure}");
+            if (persistence?.RecoveryMessage != null) text.AppendLine(persistence.RecoveryMessage);
             return text.ToString();
         }
 
@@ -570,6 +584,7 @@ namespace SpaceCrawler.Gameplay
         {
             if (stopped) return;
             if (flow == null) return;
+            TrySave();
             stopped = true; Authority?.Disconnect(); Readiness.Disconnect();
             foreach (var rig in players) if (rig != null) { rig.Input.SetRoomAvailable(false); rig.ClearRoom(); }
             ClearReplicaProjectiles();
@@ -580,12 +595,23 @@ namespace SpaceCrawler.Gameplay
             if (network.IsListening) network.Shutdown();
             Application.runInBackground = priorBackground;
         }
+        private bool TrySave()
+        {
+            try { SaveCurrent(); return true; }
+            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
+            { HealthFailure = "Progress could not be saved. Check storage availability."; Changed?.Invoke(); return false; }
+        }
+        private void OnApplicationPause(bool paused) { if (paused && Life != null) TrySave(); }
+        private void OnApplicationQuit() { if (Life != null) TrySave(); }
         public void SaveCurrent()
         {
-            if (Mode == SessionRole.Host && Life != null && !Life.Ended && commitCheckpoint != null && sequence != null
-                && (Progression.State == RoomFlowState.Playing || Progression.State == RoomFlowState.Terminal))
-                commitCheckpoint(RunCheckpoint.Capture(sequence, Progression, SavedSessionMode.Cooperative, new[] { weapon.Id, weapon.Id }, Life.Capture()));
+            if (Mode != SessionRole.Host || Life == null || Life.Ended || Progression == null || rooms.CurrentRoom == null
+                || (Progression.State != RoomFlowState.Playing && Progression.State != RoomFlowState.Terminal)) return;
+            var world = persistence.Capture(LevelNumber,Progression.CurrentRoomId,rooms.CurrentRoom,players.Select(p => p.Motor).ToArray(),players.Select(p => p.Simulation).ToArray(),players.Select(p => p.Combat).ToArray());
+            if (commitCheckpoint != null && sequence != null)
+                persistence.Commit(RunCheckpoint.Capture(sequence,Progression,SavedSessionMode.Cooperative,new[] {weapon.Id,weapon.Id},Life.Capture(),world),commitCheckpoint);
         }
+
         public bool DamagePlayer(PlayerIdentity player, Guid attackId, int amount)
             => !stopped && !RunEnded && Mode == SessionRole.Host && roomReady && Life.TryDamage(player, attackId, amount);
         private void ApplyLife()

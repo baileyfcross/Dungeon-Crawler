@@ -17,7 +17,7 @@ namespace SpaceCrawler.Tests.EditMode
             var catalog = Catalog();
             for (ulong seed = 0; seed < 5000; seed++)
             {
-                var sequence = new RunSequence(seed, catalog);
+                var sequence = new RunSequence(seed, catalog, 1);
                 Assert.That(sequence.Levels.Count, Is.EqualTo(3));
                 Assert.That(sequence.Levels.Select(g => g.Seed).Distinct().Count(), Is.EqualTo(3));
                 foreach (var graph in sequence.Levels)
@@ -45,7 +45,7 @@ namespace SpaceCrawler.Tests.EditMode
         [TestCase(ulong.MaxValue)]
         public void SequenceAndUnderlyingGraphsReproduceExactly(ulong seed)
         {
-            var first = new RunSequence(seed, Catalog()); var second = new RunSequence(seed, Catalog());
+            var first = new RunSequence(seed, Catalog(), 1); var second = new RunSequence(seed, Catalog(), 1);
             for (var i = 0; i < 3; i++)
             {
                 var graph = first.Levels[i];
@@ -57,7 +57,7 @@ namespace SpaceCrawler.Tests.EditMode
         [Test]
         public void OnlyCompletedCurrentLevelsAdvanceAndFinalLevelCannotAdvance()
         {
-            var run = new RunSequence(42, Catalog());
+            var run = new RunSequence(42, Catalog(), 1);
             for (var level = 1; level <= 3; level++)
             {
                 var progress = new RunProgression(run.CurrentGraph, new PlayerIdentity(1));

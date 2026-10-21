@@ -24,10 +24,12 @@ namespace SpaceCrawler.Core
                     {
                         writer.Write(node.Id.Value); writer.Write(node.DefinitionId);
                         writer.Write((int)node.Category); writer.Write(node.IsTerminal);
+                        if (graph.GenerationVersion >= 2) { writer.Write(node.LayoutX); writer.Write(node.LayoutY); }
                     }
                     writer.Write(graph.Connections.Count);
                     foreach (var edge in graph.Connections.OrderBy(e => e.From.Value).ThenBy(e => e.To.Value))
-                    { writer.Write(edge.From.Value); writer.Write(edge.To.Value); }
+                    { writer.Write(edge.From.Value); writer.Write(edge.To.Value);
+                        if (graph.GenerationVersion >= 2) { writer.Write(edge.FromPort); writer.Write(edge.ToPort); } }
                 }
                 using (var hash = SHA256.Create())
                     return BitConverter.ToString(hash.ComputeHash(bytes.ToArray())).Replace("-", "").ToLowerInvariant();

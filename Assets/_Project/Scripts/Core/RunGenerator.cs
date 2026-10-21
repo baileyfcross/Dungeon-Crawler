@@ -10,6 +10,7 @@ namespace SpaceCrawler.Core
 
         public DungeonGraph Generate(ulong seed, RunGenerationConfiguration configuration, int generationVersion = CurrentVersion)
         {
+            if (generationVersion == 2) return TinyKeepLayout.Generate(seed, configuration);
             if (generationVersion != CurrentVersion) throw new ArgumentOutOfRangeException(nameof(generationVersion), "Unsupported generator version.");
             if (configuration == null) throw new ArgumentNullException(nameof(configuration));
             var random = new DeterministicRandom(seed);
@@ -59,7 +60,7 @@ namespace SpaceCrawler.Core
             return layers;
         }
 
-        private static RoomConfiguration ChooseDefinition(RunGenerationConfiguration configuration, bool starting, DeterministicRandom random)
+        internal static RoomConfiguration ChooseDefinition(RunGenerationConfiguration configuration, bool starting, DeterministicRandom random)
         {
             var choice = random.NextInt(starting ? configuration.StartingWeight : configuration.RegularWeight);
             foreach (var definition in configuration.Definitions)

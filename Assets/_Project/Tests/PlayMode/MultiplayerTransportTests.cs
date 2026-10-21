@@ -23,6 +23,7 @@ namespace SpaceCrawler.Tests.PlayMode
         private MultiplayerSession host, client, refused;
         private ApplicationFlow hostFlow, clientFlow;
         private bool previousBackground;
+        private RunCheckpoint latestCheckpoint;
         private static ushort port = 17900;
 
         [UnitySetUp]
@@ -49,7 +50,7 @@ namespace SpaceCrawler.Tests.PlayMode
             var flow = new ApplicationFlow(); flow.TryRequest(ApplicationCommand.Initialize); flow.CompleteLoading(ApplicationState.MainMenu);
             flow.TryRequest(ApplicationCommand.NewGame); flow.CompleteLoading(ApplicationState.Gameplay); return flow;
         }
-        private IEnumerator StartPair(bool blaster = false, bool levels = false, int enemies = 0, bool melee = false, bool combatFixture = true)
+        private IEnumerator StartPair(bool blaster = false, bool levels = false, int enemies = 0, bool melee = false, bool combatFixture = true, RunCheckpoint checkpoint = null)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<MultiplayerSession>("Assets/_Project/Prefabs/Gameplay/MultiplayerSession.prefab");
             host = Object.Instantiate(prefab); client = Object.Instantiate(prefab);
@@ -64,11 +65,11 @@ namespace SpaceCrawler.Tests.PlayMode
             }
             host.PollLocalDevices = false; client.PollLocalDevices = false;
             hostFlow = Playing(); clientFlow = Playing(); var endpoint = ++port;
-            host.Bind(SessionRole.Host, hostFlow, port: endpoint, hostSeed: 42, useLevelSequence: levels);
+            host.Bind(SessionRole.Host, hostFlow, port: endpoint, hostSeed: 42, useLevelSequence: levels, checkpoint: checkpoint, save: value => latestCheckpoint = value);
             if (melee) host.Rooms.CurrentRoom.Encounter.Enemies[0].ConfigureMelee(
                 AssetDatabase.LoadAssetAtPath<MeleeEnemyDefinition>("Assets/_Project/Data/Enemies/MeleeEnemy.asset"));
             // A competing seed argument is deliberately ignored for the client role.
-            client.Bind(SessionRole.Client, clientFlow, port: endpoint, hostSeed: 999);
+            client.Bind(SessionRole.Client, clientFlow, port: endpoint, hostSeed: 999, profileId: checkpoint?.Life.Profiles[1]);
             yield return WaitFor(() => host.RoomReady && client.RoomReady, "two-peer room handshake");
             if (melee) client.Rooms.CurrentRoom.Encounter.Enemies[0].ConfigureMelee(
                 AssetDatabase.LoadAssetAtPath<MeleeEnemyDefinition>("Assets/_Project/Data/Enemies/MeleeEnemy.asset"));
@@ -87,8 +88,12 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(client.CurrentRoom, Is.EqualTo(host.CurrentRoom));
             Assert.That(host.Rooms.RoomContainer.childCount, Is.EqualTo(1)); Assert.That(client.Rooms.RoomContainer.childCount, Is.EqualTo(1));
             var room = host.Rooms.CurrentRoom;
-            Assert.That(Vector2.Distance(host.Players[0].Motor.Body.position, room.PlayerOneSpawnAnchor.position), Is.LessThan(.01));
-            Assert.That(Vector2.Distance(host.Players[1].Motor.Body.position, room.PlayerTwoSpawnAnchor.position), Is.LessThan(.01));
+            if (host.Run.GenerationVersion == 1)
+            {
+                Assert.That(Vector2.Distance(host.Players[0].Motor.Body.position, room.PlayerOneSpawnAnchor.position), Is.LessThan(.01));
+                Assert.That(Vector2.Distance(host.Players[1].Motor.Body.position, room.PlayerTwoSpawnAnchor.position), Is.LessThan(.01));
+            }
+            else foreach (var rig in host.Players) Assert.That(room.IsSafePosition(rig.Motor.Body.position),Is.True);
             Assert.That(Vector2.Distance(host.Players[0].Motor.Body.position, host.Players[1].Motor.Body.position), Is.GreaterThan(1.2));
             Assert.That(Physics2D.GetIgnoreCollision(host.Players[0].Colliders[0], host.Players[1].Colliders[0]), Is.True);
             foreach (var rig in client.Players) { Assert.That(rig.Simulation, Is.Null); Assert.That(rig.Motor.Body.simulated, Is.False); }
@@ -125,7 +130,7 @@ namespace SpaceCrawler.Tests.PlayMode
             var oldProtocol = new NetworkManager.ConnectionApprovalResponse();
             host.Network.ConnectionApprovalCallback(request, oldProtocol);
             Assert.That(oldProtocol.Approved, Is.False);
-            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession6");
+            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession7");
             var accepted = new NetworkManager.ConnectionApprovalResponse();
             host.Network.ConnectionApprovalCallback(request, accepted);
             Assert.That(accepted.Approved, Is.True);
@@ -182,11 +187,12 @@ namespace SpaceCrawler.Tests.PlayMode
             var lastEpoch = host.Epoch;
             while (host.LevelNumber < 3 || !host.Progression.IsTerminal)
             {
-                Assert.That(host.Run.Nodes.Count, Is.InRange(10, 17));
+                Assert.That(host.Run.Nodes.Count, Is.InRange(10, 25));
                 var level = host.LevelNumber;
-                var destination = host.Progression.Choices[0].To;
+                var edge = host.Run.Route(host.CurrentRoom,host.Run.TerminalRoomId)[0];
+                var destination = edge.To;
                 var nextLevel = host.Run.GetRoom(destination).IsTerminal && level < 3;
-                var exit = host.Progression.Choices.Count == 1 ? host.Rooms.CurrentRoom.SingleExit : host.Rooms.CurrentRoom.LeftExit;
+                var exit = host.Rooms.CurrentRoom.ExitFor(edge,host.Progression.Choices);
                 host.Players[0].Motor.PlaceAt(exit.transform.position);
                 host.Players[1].Motor.PlaceAt(exit.transform.position + Vector3.right * .2f);
                 yield return WaitFor(() => host.RoomReady && client.RoomReady && host.Epoch > lastEpoch
@@ -203,9 +209,9 @@ namespace SpaceCrawler.Tests.PlayMode
                 {
                     Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
                     var rejected = host.Authority.RejectedStale;
-                    SendClient("session.input.v6", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
+                    SendClient("session.input.v7", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
                         Sequence = 9999, AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.up });
-                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v6", JsonUtility.ToJson(
+                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v7", JsonUtility.ToJson(
                         new RoomLoadAcknowledgment { epoch = lastEpoch, level = level, room = 0, fingerprint = host.Fingerprint }));
                     yield return WaitFor(() => host.Authority.RejectedStale > rejected, "prior-level input rejected");
                     Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1), "Old-level acknowledgment cannot commit entry again.");
@@ -213,7 +219,8 @@ namespace SpaceCrawler.Tests.PlayMode
             }
             Assert.That(host.LevelNumber, Is.EqualTo(3));
             Assert.That(host.RoomReady && client.RoomReady, Is.True);
-            Assert.That(host.Progression.Choices, Is.Empty);
+            if (host.Run.GenerationVersion == 1) Assert.That(host.Progression.Choices,Is.Empty);
+            else Assert.That(host.Progression.Choices.Count, Is.InRange(1,4));
         }
 
         [UnityTest]
@@ -252,7 +259,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero)); Assert.That(client.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero));
 
             var before = host.Authority.RejectedOwnership;
-            SendClient("session.input.v6", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
+            SendClient("session.input.v7", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
                 AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.left });
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Authority.RejectedOwnership, Is.EqualTo(before + 1));
@@ -336,7 +343,8 @@ namespace SpaceCrawler.Tests.PlayMode
                 foreach (var target in client.Rooms.CurrentRoom.Targets) Assert.That(target.DisplayedHealth, Is.EqualTo(100));
             }
             Assert.That(sawRejoin, Is.True); Assert.That(expectedEntries, Is.InRange(9, 11));
-            Assert.That(host.Progression.Choices, Is.Empty);
+            if (host.Run.GenerationVersion == 1) Assert.That(host.Progression.Choices,Is.Empty);
+            else Assert.That(host.Progression.Choices.Count, Is.InRange(1,4));
             Assert.That(new[] { host.Rooms.CurrentRoom.SingleExit, host.Rooms.CurrentRoom.LeftExit, host.Rooms.CurrentRoom.RightExit }.Any(e => e.gameObject.activeSelf), Is.False);
             Assert.That(client.Describe(), Does.Contain("Terminal room reached"));
             Move(client, CoreVector.UnitX); Aim(client, CoreVector.UnitY); Attack(client);
@@ -368,11 +376,11 @@ namespace SpaceCrawler.Tests.PlayMode
         {
             yield return StartPair(); var initial = host.CurrentRoom;
             var forged = new RunSessionDescriptor { runId = host.Life.RunId.ToString("N"), epoch = host.Epoch + 1, seed = "999", fingerprint = "forged", destination = 10, generationVersion = 1, weapon = "weapon.knife" };
-            SendJson(client.Network, host.Network.LocalClientId, "session.run.v6", JsonUtility.ToJson(forged));
+            SendJson(client.Network, host.Network.LocalClientId, "session.run.v7", JsonUtility.ToJson(forged));
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Run.Seed, Is.EqualTo(42)); Assert.That(host.CurrentRoom, Is.EqualTo(initial)); Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
             // Fault injection from the real server transport, deliberately corrupting graph agreement.
-            SendJson(host.Network, client.Network.LocalClientId, "session.run.v6", JsonUtility.ToJson(forged));
+            SendJson(host.Network, client.Network.LocalClientId, "session.run.v7", JsonUtility.ToJson(forged));
             yield return WaitFor(() => client.Failure != null, "mismatching descriptor rejection");
             Assert.That(client.Failure, Does.Contain("mismatch")); Assert.That(client.Run.Seed, Is.EqualTo(42));
         }
@@ -422,6 +430,48 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Rooms.CurrentRoom.GetComponentsInChildren<DamageableTarget>(true).Length, Is.EqualTo(1));
             Assert.That(client.Rooms.CurrentRoom.GetComponentsInChildren<DamageableTarget>(true).Length, Is.EqualTo(1));
             Assert.That(host.Failure ?? client.Failure, Is.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator SharedBacktrackingAndContinuePreserveEnemiesPlayerPosesAndDownedState()
+        {
+            yield return StartPair(levels:true,combatFixture:false);
+            var route = SessionValidationDriver.RouteToEngine(host.Run); Assert.That(route,Is.Not.Null);
+            foreach (var edge in route) yield return Travel(edge);
+            var encounterRoom = host.CurrentRoom;
+            var enemy = host.Rooms.CurrentRoom.Encounter.Enemies.Single();
+            enemy.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1),1000,enemy.Target.Identity,100),out _);
+            yield return WaitFor(() => client.Rooms.CurrentRoom.Encounter.Enemies.Single().Lifecycle == EnemyLifecycle.Dead,"enemy death");
+            var outgoing = host.Progression.Choices.First(e => !host.Run.GetRoom(e.To).IsTerminal);
+            yield return Travel(outgoing);
+            var incoming = host.Progression.Choices.Single(e => e.To.Equals(encounterRoom));
+            yield return Travel(incoming);
+            Assert.That(host.Rooms.CurrentRoom.Encounter.Enemies.Single().Target.Health.Current,Is.Zero);
+            Assert.That(host.Rooms.CurrentRoom.Encounter.Enemies.Single().DeathEvents,Is.Zero,"restore must not emit a second death");
+            Assert.That(Vector2.Distance(host.Players[0].Motor.Body.position,host.Rooms.CurrentRoom.Arrival(incoming.ToPort,0,2)),Is.LessThan(.02));
+            host.Players[0].Motor.PlaceAt(new Vector2(-2,3)); host.Players[1].Motor.PlaceAt(new Vector2(2,3));
+            host.Players[0].Simulation.RestoreAim(CoreVector.UnitY); host.Players[1].Simulation.RestoreAim(-CoreVector.UnitY);
+            host.DamagePlayer(new PlayerIdentity(1),Guid.NewGuid(),23); host.DamagePlayer(new PlayerIdentity(2),Guid.NewGuid(),100);
+            host.Players[0].Combat.Simulation.RestoreCooldown(.1f); host.SaveCurrent();
+            var saved = RunCheckpointCodec.Decode(RunCheckpointCodec.Encode(latestCheckpoint));
+            client.Stop(); host.Stop(); Object.Destroy(client.gameObject); Object.Destroy(host.gameObject); yield return Frames(5);
+            yield return StartPair(levels:true,combatFixture:false,checkpoint:saved);
+            Assert.That(host.CurrentRoom,Is.EqualTo(encounterRoom)); Assert.That(host.Life[0].Current,Is.EqualTo(77));
+            Assert.That(host.Life[1].State,Is.EqualTo(PlayerLifeState.Downed)); Assert.That(client.Vitals(1).State,Is.EqualTo(PlayerLifeState.Downed));
+            Assert.That(host.Players[0].Motor.Body.position,Is.EqualTo(new Vector2(-2,3))); Assert.That(host.Players[1].Motor.Body.position,Is.EqualTo(new Vector2(2,3)));
+            Assert.That(host.Players[0].State.AimDirection,Is.EqualTo(CoreVector.UnitY)); Assert.That(host.Players[1].State.AimDirection,Is.EqualTo(-CoreVector.UnitY));
+            Assert.That(host.Life.ReviveProgress(1),Is.Zero); Assert.That(host.Rooms.CurrentRoom.Encounter.Enemies.Single().Target.Health.Current,Is.Zero);
+            Assert.That(client.Rooms.CurrentRoom.Encounter.Enemies.Single().Target.DisplayedHealth,Is.Zero);
+            Assert.That(client.Rooms.CurrentRoom.Encounter.Enemies.Single().DeathEvents,Is.Zero,"initial dead replica does not replay death");
+            Assert.That(host.Failure ?? client.Failure,Is.Null);
+        }
+        private IEnumerator Travel(RoomConnection edge)
+        {
+            var beforeEpoch = host.Epoch; var room = host.Rooms.CurrentRoom;
+            var exit = room.ExitFor(edge,host.Progression.Choices);
+            host.Players[0].Motor.PlaceAt(exit.transform.position); host.Players[1].Motor.PlaceAt(exit.transform.position);
+            yield return WaitFor(() => host.Epoch > beforeEpoch && client.Epoch == host.Epoch && host.RoomReady && client.RoomReady,"reciprocal shared door");
+            yield return Frames(2);
         }
 
         private void SendClient(string name, PlayerInputMessage input)

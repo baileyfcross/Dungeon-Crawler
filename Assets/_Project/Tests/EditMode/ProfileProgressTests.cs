@@ -120,7 +120,7 @@ namespace SpaceCrawler.Tests.EditMode
             checkpoints.Save(loaded);
             Assert.That(File.ReadAllBytes(path + ".schema2"), Is.EqualTo(bytes));
             Assert.That(checkpoints.Load(out var upgraded, out _), Is.EqualTo(CheckpointLoadStatus.Valid));
-            Assert.That(upgraded.SourceSchemaVersion, Is.EqualTo(3));
+            Assert.That(upgraded.SourceSchemaVersion, Is.EqualTo(RunCheckpoint.SchemaVersion));
         }
     }
 }

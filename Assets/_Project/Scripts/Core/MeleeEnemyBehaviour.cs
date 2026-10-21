@@ -47,7 +47,7 @@ namespace SpaceCrawler.Core
         private readonly EnemySimulation enemy;
         private readonly MeleeEnemyConfiguration configuration;
         private readonly Vector2 spawn;
-        private float remaining, unseen;
+        private float remaining, unseen, restoredRecovery;
         private Vector2 lastSeen;
         public EnemyBehaviourState State { get; private set; }
         public Vector2 Facing { get; private set; } = Vector2.UnitX;
@@ -64,6 +64,13 @@ namespace SpaceCrawler.Core
             this.spawn = spawn;
         }
 
+        public void Restore(Vector2 facing)
+        {
+            if (!PlayerSimulation.IsFinite(facing) || Math.Abs(facing.LengthSquared()-1) > .001f) throw new ArgumentException("Invalid restored facing.");
+            Facing = facing; restoredRecovery = configuration.Recovery; State = enemy.Health.IsAlive ? EnemyBehaviourState.Recovery : EnemyBehaviourState.Dead;
+            Destination = null; StrikeTarget = null;
+        }
+
         public void Advance(float seconds, Vector2 position, IReadOnlyList<EnemyObservation> observations, bool running)
         {
             if (float.IsNaN(seconds) || float.IsInfinity(seconds) || seconds < 0 || !PlayerSimulation.IsFinite(position)
@@ -71,6 +78,8 @@ namespace SpaceCrawler.Core
             Destination = null; StrikeTarget = null;
             if (enemy.Lifecycle != EnemyLifecycle.Alive) { State = EnemyBehaviourState.Dead; return; }
             if (!running) return;
+            if (restoredRecovery > 0)
+            { restoredRecovery = Math.Max(0,restoredRecovery-seconds); State = EnemyBehaviourState.Recovery; return; }
             EnemyObservation? target = null;
             foreach (var observation in observations)
                 if (enemy.AggroTarget.HasValue && observation.Player.Equals(enemy.AggroTarget.Value) && observation.Alive) target = observation;

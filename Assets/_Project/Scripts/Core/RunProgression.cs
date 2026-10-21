@@ -33,7 +33,7 @@ namespace SpaceCrawler.Core
 
         public static void ValidateRoute(DungeonGraph graph, IReadOnlyList<RunRoomId> history)
         {
-            if (history == null || history.Count == 0 || history.Count > graph.Nodes.Count || !history[0].Equals(graph.StartRoomId))
+            if (history == null || history.Count == 0 || history.Count > (graph.GenerationVersion == 1 ? graph.Nodes.Count : 4096) || !history[0].Equals(graph.StartRoomId))
                 throw new ArgumentException("Saved room history has an invalid start or length.");
             for (var i = 0; i < history.Count; i++)
             {
@@ -73,13 +73,14 @@ namespace SpaceCrawler.Core
             Graph.GetRoom(room);
             var connections = new List<RoomConnection>(2);
             foreach (var edge in Graph.Connections) if (edge.From.Equals(room)) connections.Add(edge);
-            if (connections.Count > 2) throw new InvalidOperationException("Only zero, one, or two forward exits are supported.");
+            if (connections.Count > (Graph.GenerationVersion == 1 ? 2 : 4)) throw new InvalidOperationException("Only zero, one, or two forward exits are supported.");
             return connections.AsReadOnly();
         }
 
         public bool TryRequestExit(ExitIntent intent)
         {
-            if (!GameplayActive || State != RoomFlowState.Playing || IsTerminal
+            if (!GameplayActive || (State != RoomFlowState.Playing && !(Graph.GenerationVersion >= 2 && State == RoomFlowState.Terminal))
+                || (IsTerminal && Graph.GenerationVersion == 1) || visits.Count >= 4096
                 || intent.Player.Value <= 0 || !Player.Equals(intent.Player) || !CurrentRoomId.Equals(intent.CurrentRoom)) return false;
             foreach (var choice in Choices)
             {
