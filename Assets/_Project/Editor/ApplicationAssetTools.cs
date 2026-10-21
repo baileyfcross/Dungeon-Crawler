@@ -14,8 +14,8 @@ using Object = UnityEngine.Object;
 
 namespace SpaceCrawler.Editor
 {
-    /// <summary>Small foundation authoring tools; preserve existing assets and only fill missing Boot wiring.</summary>
-    public static class FoundationAssets
+    /// <summary>Small application authoring tools; preserve existing assets and only fill missing Boot wiring.</summary>
+    public static class ApplicationAssetTools
     {
         public const string Root = "Assets/_Project";
         public const string BootPath = Root + "/Scenes/Boot.unity";
@@ -23,7 +23,7 @@ namespace SpaceCrawler.Editor
         public const string GameplayPath = Root + "/Scenes/Gameplay.unity";
         public const string ProfilePath = Root + "/Settings/BuildProfiles/WindowsDevelopment.asset";
 
-        [MenuItem("Tools/Space Crawler/Foundation/Create Assets")]
+        [MenuItem("Tools/Space Crawler/Application/Create Assets")]
         public static void CreateAssets()
         {
             RequireIdleEditor();
@@ -33,7 +33,7 @@ namespace SpaceCrawler.Editor
             EnsureFolder(Root + "/Settings/BuildProfiles");
             var panel = CreatePanel();
             CreateScreen("MainMenu", "MainMenu", ApplicationState.MainMenu, panel);
-            CreateScreen("GameplayPlaceholder", "GameplayPlaceholder", ApplicationState.Gameplay, panel);
+            CreateScreen("GameplayScreen", "GameplayScreen", ApplicationState.Gameplay, panel);
             CreateScene(MenuPath);
             CreateScene(GameplayPath);
             CreateScene(BootPath);
@@ -45,12 +45,12 @@ namespace SpaceCrawler.Editor
 
         private static PanelSettings CreatePanel()
         {
-            const string path = Root + "/UI/FoundationPanel.asset";
+            const string path = Root + "/UI/ApplicationPanelSettings.asset";
             var panel = AssetDatabase.LoadAssetAtPath<PanelSettings>(path);
             if (panel != null) return panel;
             panel = ScriptableObject.CreateInstance<PanelSettings>();
-            panel.name = "FoundationPanel";
-            panel.themeStyleSheet = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(Root + "/UI/FoundationTheme.tss");
+            panel.name = "ApplicationPanelSettings";
+            panel.themeStyleSheet = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(Root + "/UI/ApplicationTheme.tss");
             panel.scaleMode = PanelScaleMode.ScaleWithScreenSize;
             panel.referenceResolution = new Vector2Int(1280, 720);
             panel.screenMatchMode = PanelScreenMatchMode.MatchWidthOrHeight;
@@ -71,7 +71,7 @@ namespace SpaceCrawler.Editor
                 document.panelSettings = panel;
                 document.visualTreeAsset = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>($"{Root}/UI/{uxml}.uxml");
                 if (document.visualTreeAsset == null || panel.themeStyleSheet == null)
-                    throw new InvalidOperationException("Import the foundation UI assets before creating prefabs.");
+                    throw new InvalidOperationException("Import the application UI assets before creating prefabs.");
                 var screen = temporary.AddComponent<ApplicationScreen>();
                 var data = new SerializedObject(screen);
                 data.FindProperty("document").objectReferenceValue = document;
@@ -108,7 +108,7 @@ namespace SpaceCrawler.Editor
 
             // Resolve persistent prefab assets after scene creation/import, not stale transient references.
             var menu = AssetDatabase.LoadAssetAtPath<GameObject>(Root + "/Prefabs/UI/MainMenu.prefab").GetComponent<ApplicationScreen>();
-            var gameplay = AssetDatabase.LoadAssetAtPath<GameObject>(Root + "/Prefabs/UI/GameplayPlaceholder.prefab").GetComponent<ApplicationScreen>();
+            var gameplay = AssetDatabase.LoadAssetAtPath<GameObject>(Root + "/Prefabs/UI/GameplayScreen.prefab").GetComponent<ApplicationScreen>();
             if (menu == null || gameplay == null)
                 throw new InvalidOperationException("Both screen prefabs must contain ApplicationScreen.");
             var root = new GameObject("Application Root").AddComponent<ApplicationRoot>();
@@ -150,7 +150,7 @@ namespace SpaceCrawler.Editor
             AssetDatabase.SaveAssetIfDirty(profile);
         }
 
-        [MenuItem("Tools/Space Crawler/Foundation/Open Boot")]
+        [MenuItem("Tools/Space Crawler/Application/Open Boot")]
         public static void OpenBoot()
         {
             RequireIdleEditor();
@@ -159,27 +159,27 @@ namespace SpaceCrawler.Editor
             EditorSceneManager.playModeStartScene = AssetDatabase.LoadAssetAtPath<SceneAsset>(BootPath);
         }
 
-        [MenuItem("Tools/Space Crawler/Foundation/Enter Play Mode")]
+        [MenuItem("Tools/Space Crawler/Application/Enter Play Mode")]
         public static void EnterPlayMode()
         {
             OpenBoot();
             EditorApplication.EnterPlaymode();
         }
 
-        [MenuItem("Tools/Space Crawler/Foundation/Exit Play Mode")]
+        [MenuItem("Tools/Space Crawler/Application/Exit Play Mode")]
         public static void ExitPlayMode() => EditorApplication.ExitPlaymode();
 
-        [MenuItem("Tools/Space Crawler/Foundation/Build Windows Development")]
+        [MenuItem("Tools/Space Crawler/Application/Build Windows Development")]
         public static void BuildWindowsDevelopment()
         {
             RequireIdleEditor();
             var profile = AssetDatabase.LoadAssetAtPath<BuildProfile>(ProfilePath);
-            if (profile == null) throw new InvalidOperationException("Create the foundation assets first.");
+            if (profile == null) throw new InvalidOperationException("Create the application assets first.");
             BuildProfile.SetActiveBuildProfile(profile);
             if (EditorUserBuildSettings.activeBuildTarget != BuildTarget.StandaloneWindows64 || !EditorUserBuildSettings.development)
                 throw new InvalidOperationException("The profile must target Windows Intel 64-bit with Development Build enabled.");
             Directory.CreateDirectory("Builds/WindowsDevelopment");
-            Directory.CreateDirectory(FoundationValidation.ResultsDirectory);
+            Directory.CreateDirectory(ProjectValidationTools.ResultsDirectory);
             var report = BuildPipeline.BuildPlayer(new BuildPlayerWithProfileOptions
             {
                 buildProfile = profile,
@@ -188,12 +188,12 @@ namespace SpaceCrawler.Editor
             });
             // Persist package post-build cleanup (for example, temporary preloaded input assets).
             AssetDatabase.SaveAssets();
-            File.WriteAllText(FoundationValidation.ResultsDirectory + "/Build.summary.txt",
+            File.WriteAllText(ProjectValidationTools.ResultsDirectory + "/Build.summary.txt",
                 $"Profile: {ProfilePath}\nResult: {report.summary.result}\nTarget: {report.summary.platform}\n" +
                 $"Options: {report.summary.options}\nErrors: {report.summary.totalErrors}\nWarnings: {report.summary.totalWarnings}\n" +
                 $"Size: {report.summary.totalSize} bytes\nDuration: {report.summary.totalTime}\nOutput: {report.summary.outputPath}\n");
             if (report.summary.result != BuildResult.Succeeded)
-                throw new InvalidOperationException($"Windows Development build failed. See {FoundationValidation.ResultsDirectory}/Build.summary.txt.");
+                throw new InvalidOperationException($"Windows Development build failed. See {ProjectValidationTools.ResultsDirectory}/Build.summary.txt.");
         }
 
         private static void EnsureFolder(string path)

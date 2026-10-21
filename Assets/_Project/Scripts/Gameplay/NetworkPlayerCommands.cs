@@ -4,16 +4,16 @@ using UnityEngine;
 
 namespace SpaceCrawler.Gameplay
 {
-    public sealed class SpikeLocalCommands : IPlayerCommands
+    public sealed class NetworkPlayerCommands : IPlayerCommands
     {
         private readonly Func<PlayerState> state;
         private readonly Func<uint> epoch;
-        private readonly Action<SpikeInput, bool> submit;
+        private readonly Action<PlayerInputMessage, bool> submit;
         private Vector2 move, aim = Vector2.right;
         private ulong sequence, attackSequence;
         public PlayerState State => state();
         public bool InputActive { get; private set; }
-        public SpikeLocalCommands(Func<PlayerState> state, Func<uint> epoch, Action<SpikeInput, bool> submit)
+        public NetworkPlayerCommands(Func<PlayerState> state, Func<uint> epoch, Action<PlayerInputMessage, bool> submit)
         { this.state = state; this.epoch = epoch; this.submit = submit; }
         public void SetInputActive(bool active)
         {
@@ -40,7 +40,7 @@ namespace SpaceCrawler.Gameplay
         public void SendMovement() => Send(false, false);
         private void Send(bool reliable, bool attack)
         {
-            submit(new SpikeInput { Epoch = epoch(), Sequence = ++sequence, AttackSequence = attack ? ++attackSequence : 0,
+            submit(new PlayerInputMessage { Epoch = epoch(), Sequence = ++sequence, AttackSequence = attack ? ++attackSequence : 0,
                 ClaimedPlayer = State.Player.Value, Active = InputActive, Move = InputActive ? move : Vector2.zero, Aim = aim }, reliable);
         }
     }

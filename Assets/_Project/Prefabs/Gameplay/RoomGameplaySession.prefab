@@ -335,8 +335,8 @@ MonoBehaviour:
   combat: {fileID: 2382196992964349020}
   generation: {fileID: 11400000, guid: af6e340363c4d7247856d410bffe8fb4, type: 2}
   rooms: {fileID: 5023946082873428610}
-  useDevelopmentSeed: 0
-  developmentSeed: 42
+  useFixedSeed: 0
+  fixedSeed: 42
 --- !u!114 &2382196992964349020
 MonoBehaviour:
   m_ObjectHideFlags: 0

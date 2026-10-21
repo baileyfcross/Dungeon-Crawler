@@ -13,9 +13,9 @@ using UnityEngine.InputSystem;
 
 namespace SpaceCrawler.Editor
 {
-    public static class FoundationValidation
+    public static class ProjectValidationTools
     {
-        public const string ResultsDirectory = "Logs/Phase5A";
+        public const string ResultsDirectory = "Logs/Validation";
 
         [MenuItem("Tools/Space Crawler/Validation/Run Edit Mode Tests")]
         public static void RunEditModeTests() => RunTests(TestMode.EditMode, "SpaceCrawler.Tests.EditMode");
@@ -29,7 +29,7 @@ namespace SpaceCrawler.Editor
                 throw new InvalidOperationException("Run validation with the Editor idle in Edit Mode.");
 
             Directory.CreateDirectory(ResultsDirectory);
-            var recorder = ScriptableObject.CreateInstance<FoundationTestRecorder>();
+            var recorder = ScriptableObject.CreateInstance<TestResultRecorder>();
             recorder.hideFlags = HideFlags.HideAndDontSave;
             recorder.Begin(mode, $"{ResultsDirectory}/{mode}.xml");
             var api = ScriptableObject.CreateInstance<TestRunnerApi>();

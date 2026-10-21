@@ -3173,7 +3173,7 @@ GameObject:
   - component: {fileID: 7076825477823257469}
   - component: {fileID: 6542266984831259230}
   m_Layer: 0
-  m_Name: ControlsTestArea
+  m_Name: PlayerTestEnvironment
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3244,8 +3244,8 @@ MonoBehaviour:
   combat: {fileID: 6542266984831259230}
   generation: {fileID: 11400000, guid: af6e340363c4d7247856d410bffe8fb4, type: 2}
   rooms: {fileID: 0}
-  useDevelopmentSeed: 0
-  developmentSeed: 42
+  useFixedSeed: 0
+  fixedSeed: 42
 --- !u!114 &6542266984831259230
 MonoBehaviour:
   m_ObjectHideFlags: 0

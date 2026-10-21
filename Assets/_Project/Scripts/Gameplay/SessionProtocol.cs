@@ -4,18 +4,18 @@ using UnityEngine;
 
 namespace SpaceCrawler.Gameplay
 {
-    public enum SpikeMode { None, Host, Client }
+    public enum SessionRole { None, Host, Client }
 
-    [Serializable] public sealed class SpikeRunDescriptor
+    [Serializable] public sealed class RunSessionDescriptor
     {
-        public int protocol = 1, generationVersion, currentRoom, destination, state;
+        public int protocol = 2, generationVersion, currentRoom, destination, state;
         public uint epoch;
         public string seed, fingerprint, weapon;
     }
-    [Serializable] public sealed class SpikeRoomAck
+    [Serializable] public sealed class RoomLoadAcknowledgment
     { public uint epoch; public int room; public string fingerprint; }
 
-    public struct SpikeInput : INetworkSerializeByMemcpy
+    public struct PlayerInputMessage : INetworkSerializeByMemcpy
     {
         public uint Epoch;
         public ulong Sequence, AttackSequence;
@@ -23,14 +23,14 @@ namespace SpaceCrawler.Gameplay
         public bool Active;
         public Vector2 Move, Aim;
     }
-    public struct SpikeStateHeader : INetworkSerializeByMemcpy
+    public struct SessionStateHeader : INetworkSerializeByMemcpy
     {
         public uint Epoch;
         public ulong Tick;
         public int CurrentRoom, State, RoomsEntered, LeftReady, RightReady;
         public bool Running;
     }
-    public struct SpikePlayerState : INetworkSerializeByMemcpy
+    public struct PlayerStateSnapshot : INetworkSerializeByMemcpy
     {
         public int Player;
         public Vector2 Position, Velocity, Aim, AttackOrigin, AttackAim;
@@ -38,8 +38,8 @@ namespace SpaceCrawler.Gameplay
         public float Cooldown;
         public bool InputEnabled;
     }
-    public struct SpikeTargetState : INetworkSerializeByMemcpy
+    public struct TargetStateSnapshot : INetworkSerializeByMemcpy
     { public int Identity, Current, Maximum; }
-    public struct SpikeProjectileState : INetworkSerializeByMemcpy
+    public struct ProjectileStateSnapshot : INetworkSerializeByMemcpy
     { public int Owner; public long Sequence; public Vector2 Position; }
 }

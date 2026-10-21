@@ -10,13 +10,13 @@ namespace SpaceCrawler.Gameplay
 {
     /// <summary>Opt-in two-OS-process validation driver. Produces ordinary local commands only;
     /// never writes physics, health, graph, readiness, or progression. Absent from release players.</summary>
-    public sealed class SpikeProcessProbe : MonoBehaviour
+    public sealed class SessionValidationDriver : MonoBehaviour
     {
         private MultiplayerSession session;
         private ApplicationFlow flow;
         private double began;
         private bool cleanupShot, observedReplicaShot;
-        private bool Host => session.Mode == SpikeMode.Host;
+        private bool Host => session.Mode == SessionRole.Host;
         private NetworkPlayerRig Local => session.Players[session.LocalPlayer - 1];
         private CoreVector Position => Local.State.Position;
 

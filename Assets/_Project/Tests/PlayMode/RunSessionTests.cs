@@ -63,7 +63,7 @@ namespace SpaceCrawler.Tests.PlayMode
         [UnityTest]
         public IEnumerator ExplicitAuthoritySeedReachesTheSameCoreGenerator()
         {
-            var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/Gameplay/ControlsTestArea.prefab");
+            var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/Gameplay/PlayerTestEnvironment.prefab");
             foreach (var seed in new[] { 0UL, ulong.MaxValue })
             {
                 session = Object.Instantiate(prefab).GetComponent<GameplaySession>();

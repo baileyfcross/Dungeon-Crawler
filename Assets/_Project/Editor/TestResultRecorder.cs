@@ -9,7 +9,7 @@ using UnityEngine.InputSystem.LowLevel;
 namespace SpaceCrawler.Editor
 {
     // A separate, matching script asset preserves this ScriptableObject across test domain reloads.
-    public sealed class FoundationTestRecorder : ScriptableObject, IErrorCallbacks
+    public sealed class TestResultRecorder : ScriptableObject, IErrorCallbacks
     {
         [SerializeField] private string resultPath;
         [SerializeField] private SceneAsset previousStartupScene;

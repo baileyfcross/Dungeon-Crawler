@@ -12,15 +12,15 @@ namespace SpaceCrawler.Editor
     /// <summary>Editor-only textual inspection. It does not own or mutate generation or save a game.</summary>
     public static class GenerationValidation
     {
-        [MenuItem("Tools/Space Crawler/Phase 4/Dump Sample Graphs")]
+        [MenuItem("Tools/Space Crawler/Run Generation/Dump Sample Graphs")]
         public static void DumpSampleGraphs()
         {
             if (EditorApplication.isCompiling || EditorApplication.isUpdating)
                 throw new InvalidOperationException("Wait for compilation/import before inspecting graphs.");
-            var asset = AssetDatabase.LoadAssetAtPath<RunGenerationDefinition>(GenerationFoundationAssets.GenerationPath);
-            if (asset == null) throw new InvalidOperationException("Create the Phase 4 static definitions first.");
+            var asset = AssetDatabase.LoadAssetAtPath<RunGenerationDefinition>(RunGenerationAssetTools.GenerationPath);
+            if (asset == null) throw new InvalidOperationException("Create the run generation static definitions first.");
             var configuration = asset.CreateConfiguration();
-            var directory = FoundationValidation.ResultsDirectory + "/Graphs";
+            var directory = ProjectValidationTools.ResultsDirectory + "/Graphs";
             Directory.CreateDirectory(directory);
             var summary = new StringBuilder();
             foreach (var seed in new[] { 0UL, 1UL, 42UL, 2026UL, ulong.MaxValue })

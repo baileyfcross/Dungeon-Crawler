@@ -11,12 +11,12 @@ using Object = UnityEngine.Object;
 namespace SpaceCrawler.Editor
 {
     /// <summary>Authors six reusable technical rooms and the persistent session through Unity APIs.</summary>
-    public static class RoomFoundationAssets
+    public static class RoomAssetTools
     {
         public const string SessionPath = "Assets/_Project/Prefabs/Gameplay/RoomGameplaySession.prefab";
         public const string RoomsPath = "Assets/_Project/Prefabs/Rooms";
 
-        [MenuItem("Tools/Space Crawler/Phase 5/Create Authored Rooms")]
+        [MenuItem("Tools/Space Crawler/Rooms/Create Authored Rooms")]
         public static void CreateRooms()
         {
             RequireIdle();
@@ -26,11 +26,11 @@ namespace SpaceCrawler.Editor
             {
                 var path = RoomsPath + "/" + category + ".prefab";
                 if (AssetDatabase.LoadAssetAtPath<AuthoredRoom>(path) == null) CreateRoom(category, path, material);
-                var definition = AssetDatabase.LoadAssetAtPath<RoomDefinition>(GenerationFoundationAssets.RoomsPath + "/" + category + ".asset");
+                var definition = AssetDatabase.LoadAssetAtPath<RoomDefinition>(RunGenerationAssetTools.RoomsPath + "/" + category + ".asset");
                 SetReference(definition, "roomPrefab", AssetDatabase.LoadAssetAtPath<AuthoredRoom>(path));
             }
             if (AssetDatabase.LoadAssetAtPath<GameplaySession>(SessionPath) == null) CreateSession();
-            var scene = EditorSceneManager.OpenScene(FoundationAssets.BootPath, OpenSceneMode.Single);
+            var scene = EditorSceneManager.OpenScene(ApplicationAssetTools.BootPath, OpenSceneMode.Single);
             var root = scene.GetRootGameObjects().Select(o => o.GetComponent<ApplicationRoot>()).Single(r => r != null);
             SetReference(root, "gameplaySession", AssetDatabase.LoadAssetAtPath<GameplaySession>(SessionPath));
             if (!EditorSceneManager.SaveScene(scene)) throw new InvalidOperationException("Could not save Boot room composition.");
@@ -81,7 +81,7 @@ namespace SpaceCrawler.Editor
 
         private static void CreateSession()
         {
-            var root = PrefabUtility.LoadPrefabContents(CombatFoundationAssets.FixturePath);
+            var root = PrefabUtility.LoadPrefabContents(CombatAssetTools.FixturePath);
             try
             {
                 var session = root.GetComponent<GameplaySession>();
@@ -101,11 +101,11 @@ namespace SpaceCrawler.Editor
             finally { PrefabUtility.UnloadPrefabContents(root); }
         }
 
-        [MenuItem("Tools/Space Crawler/Phase 5/Use Seed 42")]
+        [MenuItem("Tools/Space Crawler/Rooms/Use Seed 42")]
         public static void UseSeed42() => SetSeed(true, 42);
-        [MenuItem("Tools/Space Crawler/Phase 5/Use Seed 0")]
+        [MenuItem("Tools/Space Crawler/Rooms/Use Seed 0")]
         public static void UseSeed0() => SetSeed(true, 0);
-        [MenuItem("Tools/Space Crawler/Phase 5/Use Random Seed")]
+        [MenuItem("Tools/Space Crawler/Rooms/Use Random Seed")]
         public static void UseRandomSeed() => SetSeed(false, 42);
         private static void SetSeed(bool enabled, uint seed)
         {
@@ -114,8 +114,8 @@ namespace SpaceCrawler.Editor
             try
             {
                 var data = new SerializedObject(root.GetComponent<GameplaySession>());
-                data.FindProperty("useDevelopmentSeed").boolValue = enabled;
-                data.FindProperty("developmentSeed").longValue = seed;
+                data.FindProperty("useFixedSeed").boolValue = enabled;
+                data.FindProperty("fixedSeed").longValue = seed;
                 data.ApplyModifiedPropertiesWithoutUndo();
                 PrefabUtility.SaveAsPrefabAsset(root, SessionPath);
             }

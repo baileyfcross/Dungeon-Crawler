@@ -58,8 +58,8 @@ MonoBehaviour:
   knife: {fileID: 11400000, guid: f5eba47655a7e9e4eaf3d54634fd3159, type: 2}
   blaster: {fileID: 11400000, guid: 523e327705dfa044e9be8f9e4bfb2dff, type: 2}
   useBlaster: 0
-  useDevelopmentSeed: 0
-  developmentSeed: 42
+  useFixedSeed: 0
+  fixedSeed: 42
 --- !u!114 &8816448127250083671
 MonoBehaviour:
   m_ObjectHideFlags: 0

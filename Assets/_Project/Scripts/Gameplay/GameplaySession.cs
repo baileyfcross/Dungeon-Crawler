@@ -17,8 +17,10 @@ namespace SpaceCrawler.Gameplay
         [SerializeField] private CombatResolver combat;
         [SerializeField] private RunGenerationDefinition generation;
         [SerializeField] private RoomLoader rooms;
-        [SerializeField] private bool useDevelopmentSeed;
-        [SerializeField] private uint developmentSeed = 42;
+        [UnityEngine.Serialization.FormerlySerializedAs("useDevelopmentSeed")]
+        [SerializeField] private bool useFixedSeed;
+        [UnityEngine.Serialization.FormerlySerializedAs("developmentSeed")]
+        [SerializeField] private uint fixedSeed = 42;
         public PlayerSimulation Simulation { get; private set; }
         public DungeonGraph Run { get; private set; }
         public PlayerMotor Motor => motor;
@@ -34,7 +36,7 @@ namespace SpaceCrawler.Gameplay
             if (generation == null) throw new InvalidOperationException("Missing run generation definition.");
             // The local session selects a seed once; a future authority can explicitly supply it.
             // Neither seed selection nor Unity state is consulted inside Core generation.
-            var seed = runSeed ?? (Debug.isDebugBuild && useDevelopmentSeed ? developmentSeed : CreateRunSeed());
+            var seed = runSeed ?? (Debug.isDebugBuild && useFixedSeed ? fixedSeed : CreateRunSeed());
             Run = new RunGenerator().Generate(seed, generation.CreateConfiguration());
             Simulation = new PlayerSimulation(identity, movementSpeed);
             motor.Bind(Simulation);

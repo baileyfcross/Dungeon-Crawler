@@ -21,7 +21,7 @@ namespace SpaceCrawler.Gameplay
         private Label status;
         private GameplaySession session;
         private MultiplayerSession multiplayer;
-        private Action<SpikeMode> startSpike;
+        private Action<SessionRole> startMultiplayerSession;
         private Button host, join;
 
         public VisualElement View => document.rootVisualElement;
@@ -62,22 +62,22 @@ namespace SpaceCrawler.Gameplay
                 var next = session.Run.GetRoom(progression.Choices[i].To);
                 text.Append($"\n{(progression.Choices.Count == 1 ? "CENTER" : i == 0 ? "LEFT" : "RIGHT")} -> {next.Id} / {next.Category}");
             }
-            if (progression.IsTerminal) text.Append("\nTerminal room reached. No victory objective has been defined. No forward exits.");
+            if (progression.IsTerminal) text.Append("\nTerminal room reached. No forward exits.");
             if (progression.Failure != null) text.Append("\nRoom loading failed: " + progression.Failure);
             label.text = text.ToString();
         }
 
-        public void BindSpikeMenu(Action<SpikeMode> start)
+        public void BindLocalSessionControls(Action<SessionRole> start)
         {
-            startSpike = start;
-            var panel = View.Q("spike-menu");
+            startMultiplayerSession = start;
+            var panel = View.Q("local-session-controls");
             if (panel == null) return;
             panel.style.display = Debug.isDebugBuild ? DisplayStyle.Flex : DisplayStyle.None;
-            host = View.Q<Button>("dev-host"); join = View.Q<Button>("dev-join");
+            host = View.Q<Button>("local-host"); join = View.Q<Button>("local-join");
             host.clicked += Host; join.clicked += Join;
         }
-        private void Host() => startSpike?.Invoke(SpikeMode.Host);
-        private void Join() => startSpike?.Invoke(SpikeMode.Client);
+        private void Host() => startMultiplayerSession?.Invoke(SessionRole.Host);
+        private void Join() => startMultiplayerSession?.Invoke(SessionRole.Client);
 
         public void BindMultiplayer(MultiplayerSession session)
         {
@@ -117,8 +117,8 @@ namespace SpaceCrawler.Gameplay
             if (pauseReturn != null) pauseReturn.clicked += RequestReturn;
 
             SetUnavailable("continue", "Unavailable: no save system or valid save exists yet.");
-            SetUnavailable("load-game", "Unavailable: save loading is planned for Phase 6.");
-            SetUnavailable("options", "Unavailable: options are planned for Phase 7.");
+            SetUnavailable("load-game", "No saved game available.");
+            SetUnavailable("options", "Options unavailable.");
             flow.StateChanged += Render;
             Render(flow.State);
         }

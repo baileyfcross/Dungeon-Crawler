@@ -1,11 +1,11 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
-    <Style src="Foundation.uss" />
+    <Style src="ApplicationStyles.uss" />
     <ui:VisualElement class="gameplay-root" picking-mode="Ignore">
         <ui:VisualElement name="gameplay-hud" class="gameplay-hud" picking-mode="Ignore">
             <ui:VisualElement class="top-line" picking-mode="Ignore">
                 <ui:VisualElement picking-mode="Ignore">
-                    <ui:Label text="AUTHORED ROOM TEST" class="brand" picking-mode="Ignore" />
-                    <ui:Label name="equipped-weapon" text="PHASE 3 / KNIFE + BLASTER" class="eyebrow" picking-mode="Ignore" />
+                    <ui:Label text="SPACE CRAWLER" class="brand" picking-mode="Ignore" />
+                    <ui:Label name="equipped-weapon" text="Equipped weapon" class="eyebrow" picking-mode="Ignore" />
                 </ui:VisualElement>
                 <ui:VisualElement class="hud-actions">
                     <ui:Button name="pause" text="Pause  /  Esc" focusable="false" />
@@ -20,7 +20,7 @@
             <ui:VisualElement class="pause-card">
                 <ui:Label text="SPACE CRAWLER" class="eyebrow accent" />
                 <ui:Label text="Paused" class="title" />
-                <ui:Label text="Authored room traversal" class="subtitle" />
+                <ui:Label text="" class="subtitle" />
                 <ui:Button name="resume" text="Resume" class="primary" />
                 <ui:Button name="options" text="Options — unavailable" />
                 <ui:Button name="pause-return-to-menu" text="Return to Main Menu" />

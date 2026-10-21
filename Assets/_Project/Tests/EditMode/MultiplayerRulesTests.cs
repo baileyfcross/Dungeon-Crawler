@@ -12,7 +12,7 @@ namespace SpaceCrawler.Tests.EditMode
     {
         private PlayerSimulation one, two;
         private CombatSimulation[] combat;
-        private SpikeAuthority authority;
+        private SessionAuthority authority;
         private static DungeonGraph Graph(ulong seed = 42, string prefix = "room.") => new RunGenerator().Generate(seed,
             new RunGenerationConfiguration(new RunGenerationSettings(9, 11, 3),
                 Enum.GetValues(typeof(RoomCategory)).Cast<RoomCategory>().Select(c => new RoomConfiguration(prefix + c.ToString().ToLowerInvariant(), c, 1))));
@@ -23,12 +23,12 @@ namespace SpaceCrawler.Tests.EditMode
             one = new PlayerSimulation(new PlayerIdentity(1), 5); two = new PlayerSimulation(new PlayerIdentity(2), 5);
             var knife = WeaponConfiguration.Melee("weapon.knife", 25, .5f, 2, 90);
             combat = new[] { new CombatSimulation(one, knife), new CombatSimulation(two, knife) };
-            authority = new SpikeAuthority(0, one, two, (i, intent) => combat[i].TryAttack(intent, out _));
+            authority = new SessionAuthority(0, one, two, (i, intent) => combat[i].TryAttack(intent, out _));
             Assert.That(authority.Connect(73), Is.True); authority.SetRunning(true, 1);
         }
 
-        private static SpikeInput Command(int player, ulong sequence = 1, ulong attack = 0, bool active = true, uint epoch = 1)
-            => new SpikeInput { ClaimedPlayer = player, Sequence = sequence, AttackSequence = attack, Active = active,
+        private static PlayerInputMessage Command(int player, ulong sequence = 1, ulong attack = 0, bool active = true, uint epoch = 1)
+            => new PlayerInputMessage { ClaimedPlayer = player, Sequence = sequence, AttackSequence = attack, Active = active,
                 Epoch = epoch, Move = Vector2.up, Aim = Vector2.right };
 
         [Test]

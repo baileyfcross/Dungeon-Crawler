@@ -17,7 +17,7 @@ using CoreVector = System.Numerics.Vector2;
 namespace SpaceCrawler.Tests.PlayMode
 {
     // These exercise real NGO/UTP endpoints in one test process. Separate OS-process proofs
-    // are additionally required and recorded in Logs/Phase5A, not inferred from this suite.
+    // are additionally required and recorded in Logs/Validation, not inferred from this suite.
     public sealed class MultiplayerTransportTests
     {
         private MultiplayerSession host, client, refused;
@@ -62,9 +62,9 @@ namespace SpaceCrawler.Tests.PlayMode
             }
             host.PollLocalDevices = false; client.PollLocalDevices = false;
             hostFlow = Playing(); clientFlow = Playing(); var endpoint = ++port;
-            host.Bind(SpikeMode.Host, hostFlow, port: endpoint, hostSeed: 42);
+            host.Bind(SessionRole.Host, hostFlow, port: endpoint, hostSeed: 42);
             // A competing seed argument is deliberately ignored for the client role.
-            client.Bind(SpikeMode.Client, clientFlow, port: endpoint, hostSeed: 999);
+            client.Bind(SessionRole.Client, clientFlow, port: endpoint, hostSeed: 999);
             yield return WaitFor(() => host.RoomReady && client.RoomReady, "two-peer room handshake");
             host.Players[0].Input.HandleFocus(true); client.Players[1].Input.HandleFocus(true);
             hostFlow.TryRequest(ApplicationCommand.Resume); clientFlow.TryRequest(ApplicationCommand.Resume);
@@ -96,13 +96,40 @@ namespace SpaceCrawler.Tests.PlayMode
             => Assert.That(endpoint.LocalCommands.Attack(new AttackIntent(new PlayerIdentity(endpoint.LocalPlayer), endpoint.LocalCommands.State.AimDirection)), Is.True);
 
         [UnityTest]
+        public IEnumerator SessionAdmissionRejectsPreviousBuildWithoutChangingPlayerOwnership()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<MultiplayerSession>("Assets/_Project/Prefabs/Gameplay/MultiplayerSession.prefab");
+            host = Object.Instantiate(prefab);
+            host.PollLocalDevices = false;
+            host.Bind(SessionRole.Host, Playing(), port: ++port, hostSeed: 42);
+            yield return Frames(3);
+            var request = new NetworkManager.ConnectionApprovalRequest
+            {
+                ClientNetworkId = 99,
+                // Historical wire marker is intentionally retained only as a rejection test.
+                Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSpike1")
+            };
+            var rejected = new NetworkManager.ConnectionApprovalResponse();
+            host.Network.ConnectionApprovalCallback(request, rejected);
+            Assert.That(rejected.Approved, Is.False);
+            Assert.That(rejected.Reason, Is.Not.Empty);
+            Assert.That(host.Authority.BothConnected, Is.False);
+
+            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession2");
+            var accepted = new NetworkManager.ConnectionApprovalResponse();
+            host.Network.ConnectionApprovalCallback(request, accepted);
+            Assert.That(accepted.Approved, Is.True);
+            Assert.That(host.Authority.BothConnected, Is.False, "Approval alone must not assign an authoritative player.");
+        }
+
+        [UnityTest]
         public IEnumerator SenderAuthenticatedMovementAimCameraAndKnifeDamageReplicate()
         {
             yield return StartPair();
             refused = Object.Instantiate(AssetDatabase.LoadAssetAtPath<MultiplayerSession>("Assets/_Project/Prefabs/Gameplay/MultiplayerSession.prefab"));
             refused.Follower.GameplayCamera.enabled = false; refused.Follower.GetComponent<AudioListener>().enabled = false;
             refused.PollLocalDevices = false;
-            refused.Bind(SpikeMode.Client, Playing(), port: port);
+            refused.Bind(SessionRole.Client, Playing(), port: port);
             yield return WaitFor(() => refused.Failure != null, "extra connection refused");
             yield return Frames(4);
             Assert.That(host.Failure, Is.Null, "Refusing an extra sender must not disconnect the accepted partner.");
@@ -131,7 +158,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero)); Assert.That(client.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero));
 
             var before = host.Authority.RejectedOwnership;
-            SendClient("spike.input.v1", new SpikeInput { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
+            SendClient("session.input.v2", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
                 AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.left });
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Authority.RejectedOwnership, Is.EqualTo(before + 1));
@@ -246,17 +273,17 @@ namespace SpaceCrawler.Tests.PlayMode
         public IEnumerator ForgedClientRunMessagesCannotAdvanceHostAndBadGraphStopsClient()
         {
             yield return StartPair(); var initial = host.CurrentRoom;
-            var forged = new SpikeRunDescriptor { epoch = host.Epoch + 1, seed = "999", fingerprint = "forged", destination = 10, generationVersion = 1, weapon = "weapon.knife" };
-            SendJson(client.Network, host.Network.LocalClientId, "spike.run.v1", JsonUtility.ToJson(forged));
+            var forged = new RunSessionDescriptor { epoch = host.Epoch + 1, seed = "999", fingerprint = "forged", destination = 10, generationVersion = 1, weapon = "weapon.knife" };
+            SendJson(client.Network, host.Network.LocalClientId, "session.run.v2", JsonUtility.ToJson(forged));
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Run.Seed, Is.EqualTo(42)); Assert.That(host.CurrentRoom, Is.EqualTo(initial)); Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
             // Fault injection from the real server transport, deliberately corrupting graph agreement.
-            SendJson(host.Network, client.Network.LocalClientId, "spike.run.v1", JsonUtility.ToJson(forged));
+            SendJson(host.Network, client.Network.LocalClientId, "session.run.v2", JsonUtility.ToJson(forged));
             yield return WaitFor(() => client.Failure != null, "mismatching descriptor rejection");
             Assert.That(client.Failure, Does.Contain("mismatch")); Assert.That(client.Run.Seed, Is.EqualTo(42));
         }
 
-        private void SendClient(string name, SpikeInput input)
+        private void SendClient(string name, PlayerInputMessage input)
         {
             using (var writer = new FastBufferWriter(128, Allocator.Temp))
             { writer.WriteValueSafe(input); client.Network.CustomMessagingManager.SendNamedMessage(name, NetworkManager.ServerClientId, writer); }

@@ -24,7 +24,7 @@ namespace SpaceCrawler.Gameplay
         public CombatResolver Combat => combat;
         public Collider2D[] Colliders => playerColliders;
         public PlayerState State => authoritative ? Simulation.State : replica;
-        public SpikePlayerState LastSnapshot { get; private set; }
+        public PlayerStateSnapshot LastSnapshot { get; private set; }
 
         public void Bind(PlayerIdentity identity, bool hostAuthority, bool local, WeaponConfiguration configuration)
         {
@@ -44,12 +44,12 @@ namespace SpaceCrawler.Gameplay
             }
         }
 
-        public SpikePlayerState Capture(bool inputEnabled)
+        public PlayerStateSnapshot Capture(bool inputEnabled)
         {
             motor.CaptureState();
             var state = Simulation.State;
             var last = combat.Simulation.LastExecution;
-            return new SpikePlayerState {
+            return new PlayerStateSnapshot {
                 Player = state.Player.Value,
                 Position = new Vector2(state.Position.X, state.Position.Y), Velocity = new Vector2(state.Velocity.X, state.Velocity.Y),
                 Aim = new Vector2(state.AimDirection.X, state.AimDirection.Y),
@@ -59,7 +59,7 @@ namespace SpaceCrawler.Gameplay
             };
         }
 
-        public void Apply(SpikePlayerState state)
+        public void Apply(PlayerStateSnapshot state)
         {
             if (authoritative || state.Player != replica.Player.Value) throw new InvalidOperationException("Invalid replica ownership.");
             LastSnapshot = state;

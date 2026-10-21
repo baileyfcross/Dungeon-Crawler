@@ -11,11 +11,11 @@ using UnityEngine;
 
 namespace SpaceCrawler.Gameplay
 {
-    /// <summary>Two-player spike adapter: sender-authenticated requests in, authoritative state out.</summary>
+    /// <summary>Two-player session adapter: sender-authenticated requests in, authoritative state out.</summary>
     public sealed class MultiplayerSession : MonoBehaviour
     {
-        private const string InputMessage = "spike.input.v1", DescriptorMessage = "spike.run.v1",
-            AckMessage = "spike.room-ready.v1", StateMessage = "spike.state.v1";
+        private const string InputMessage = "session.input.v2", DescriptorMessage = "session.run.v2",
+            AckMessage = "session.room-ready.v2", StateMessage = "session.state.v2";
         [SerializeField] private NetworkManager network;
         [SerializeField] private UnityTransport transport;
         [SerializeField] private NetworkPlayerRig playerPrefab;
@@ -23,35 +23,38 @@ namespace SpaceCrawler.Gameplay
         [SerializeField] private RoomLoader rooms;
         [SerializeField] private RunGenerationDefinition generation;
         [SerializeField] private WeaponDefinition knife, blaster;
-        [SerializeField] private bool useBlaster, useDevelopmentSeed;
-        [SerializeField] private uint developmentSeed = 42;
+        [SerializeField] private bool useBlaster;
+        [UnityEngine.Serialization.FormerlySerializedAs("useDevelopmentSeed")]
+        [SerializeField] private bool useFixedSeed;
+        [UnityEngine.Serialization.FormerlySerializedAs("developmentSeed")]
+        [SerializeField] private uint fixedSeed = 42;
         private ApplicationFlow flow;
         private readonly NetworkPlayerRig[] players = new NetworkPlayerRig[2];
         private readonly Dictionary<(int, long), CombatProjectile> projectileViews = new Dictionary<(int, long), CombatProjectile>();
-        private SpikeLocalCommands commands;
+        private NetworkPlayerCommands commands;
         private ulong? remoteSender;
         private bool initializedCatalog, stopped, stopRequested, roomReady, inputRoomReady, priorBackground;
         private double nextInput, nextSnapshot, entryStarted;
         private uint epoch;
         private ulong tick, lastTick;
         private RunRoomId loadedRoom;
-        private SpikeRunDescriptor descriptor;
-        private SpikeStateHeader lastHeader;
+        private RunSessionDescriptor descriptor;
+        private SessionStateHeader lastHeader;
         private WeaponConfiguration weapon;
-        public SpikeMode Mode { get; private set; }
-        public int LocalPlayer => Mode == SpikeMode.Host ? 1 : 2;
+        public SessionRole Mode { get; private set; }
+        public int LocalPlayer => Mode == SessionRole.Host ? 1 : 2;
         public NetworkManager Network => network;
         public DungeonGraph Run { get; private set; }
         public string Fingerprint { get; private set; }
         public RunProgression Progression { get; private set; }
-        public SpikeAuthority Authority { get; private set; }
+        public SessionAuthority Authority { get; private set; }
         public ExitReadiness Readiness { get; } = new ExitReadiness();
         public IReadOnlyList<NetworkPlayerRig> Players => players;
         public RoomLoader Rooms => rooms;
         public PlayerCameraFollower Follower => follower;
         public bool RoomReady => roomReady;
         public uint Epoch => epoch;
-        public RunRoomId CurrentRoom => Mode == SpikeMode.Host ? Progression.CurrentRoomId : new RunRoomId(lastHeader.CurrentRoom);
+        public RunRoomId CurrentRoom => Mode == SessionRole.Host ? Progression.CurrentRoomId : new RunRoomId(lastHeader.CurrentRoom);
         public int ReplicaProjectileCount => projectileViews.Count;
         public IPlayerCommands LocalCommands => commands;
         // Integration tests may supply intentions at the same boundary instead of polling devices.
@@ -60,45 +63,45 @@ namespace SpaceCrawler.Gameplay
         public string WeaponName => weapon?.Id ?? "Waiting";
         public event Action Changed;
 
-        public void Bind(SpikeMode mode, ApplicationFlow localFlow, string address = "127.0.0.1", ushort port = 7777, ulong? hostSeed = null)
+        public void Bind(SessionRole mode, ApplicationFlow localFlow, string address = "127.0.0.1", ushort port = 7777, ulong? hostSeed = null)
         {
-            if (flow != null || mode == SpikeMode.None) throw new InvalidOperationException("Invalid spike binding.");
+            if (flow != null || mode == SessionRole.None) throw new InvalidOperationException("Invalid session binding.");
             Mode = mode; flow = localFlow; priorBackground = Application.runInBackground; Application.runInBackground = true;
-            weapon = (useBlaster || (Debug.isDebugBuild && SpikeDiagnostics.Option("--spike-weapon") == "blaster") ? blaster : knife).CreateConfiguration();
-            transport.SetConnectionData(address, port, mode == SpikeMode.Host ? address : null);
+            weapon = (useBlaster || (Debug.isDebugBuild && SessionDiagnostics.Option("--session-weapon") == "blaster") ? blaster : knife).CreateConfiguration();
+            transport.SetConnectionData(address, port, mode == SessionRole.Host ? address : null);
             network.NetworkConfig.NetworkTransport = transport;
             network.NetworkConfig.EnableSceneManagement = false;
             network.NetworkConfig.ConnectionApproval = true;
             network.NetworkConfig.AutoSpawnPlayerPrefabClientSide = false;
             network.NetworkConfig.PlayerPrefab = null;
             network.NetworkConfig.TickRate = 30;
-            network.NetworkConfig.ConnectionData = Encoding.ASCII.GetBytes("SpaceCrawlerSpike1");
+            network.NetworkConfig.ConnectionData = Encoding.ASCII.GetBytes("SpaceCrawlerSession2");
             network.ConnectionApprovalCallback = Approve;
             network.OnClientConnectedCallback += Connected;
             network.OnClientDisconnectCallback += Disconnected;
             network.OnTransportFailure += TransportFailed;
-            if (mode == SpikeMode.Host)
+            if (mode == SessionRole.Host)
             {
-                Run = new RunGenerator().Generate(hostSeed ?? (useDevelopmentSeed ? developmentSeed : CreateSeed()), generation.CreateConfiguration());
+                Run = new RunGenerator().Generate(hostSeed ?? (useFixedSeed ? fixedSeed : CreateSeed()), generation.CreateConfiguration());
                 Fingerprint = GraphFingerprint.Compute(Run);
                 Progression = new RunProgression(Run, new PlayerIdentity(1));
                 Progression.SetGameplayActive(true);
                 CreatePlayers();
-                Authority = new SpikeAuthority(NetworkManager.ServerClientId, players[0].Simulation, players[1].Simulation,
+                Authority = new SessionAuthority(NetworkManager.ServerClientId, players[0].Simulation, players[1].Simulation,
                     (i, intent) => players[i].Combat.RequestAttack(intent));
                 epoch = 1;
                 LoadHostRoom(Run.StartRoomId);
                 players[1].gameObject.SetActive(false);
             }
-            var started = mode == SpikeMode.Host ? network.StartHost() : network.StartClient();
-            if (!started) throw new InvalidOperationException("Could not start the direct spike connection.");
+            var started = mode == SessionRole.Host ? network.StartHost() : network.StartClient();
+            if (!started) throw new InvalidOperationException("Could not start the direct session connection.");
             network.CustomMessagingManager.RegisterNamedMessageHandler(InputMessage, ReceiveInput);
             network.CustomMessagingManager.RegisterNamedMessageHandler(DescriptorMessage, ReceiveDescriptor);
             network.CustomMessagingManager.RegisterNamedMessageHandler(AckMessage, ReceiveAck);
             network.CustomMessagingManager.RegisterNamedMessageHandler(StateMessage, ReceiveState);
-            Debug.Log($"[Spike] role={Mode} localPlayer={LocalPlayer} endpoint={address}:{port}; waiting for two-player room agreement", this);
+            Debug.Log($"[Session] role={Mode} localPlayer={LocalPlayer} endpoint={address}:{port}; waiting for two-player room agreement", this);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            if (SpikeDiagnostics.Option("--spike-probe") == "run") gameObject.AddComponent<SpikeProcessProbe>().Bind(this, flow);
+            if (SessionDiagnostics.Option("--session-validation") == "run") gameObject.AddComponent<SessionValidationDriver>().Bind(this, flow);
 #endif
         }
 
@@ -113,16 +116,16 @@ namespace SpaceCrawler.Gameplay
             for (var i = 0; i < 2; i++)
             {
                 players[i] = Instantiate(playerPrefab, transform);
-                players[i].Bind(new PlayerIdentity(i + 1), Mode == SpikeMode.Host, i + 1 == LocalPlayer, weapon);
+                players[i].Bind(new PlayerIdentity(i + 1), Mode == SessionRole.Host, i + 1 == LocalPlayer, weapon);
             }
-            if (Mode == SpikeMode.Host)
+            if (Mode == SessionRole.Host)
             {
                 foreach (var a in players[0].Colliders) foreach (var b in players[1].Colliders) Physics2D.IgnoreCollision(a, b, true);
                 foreach (var rig in players) foreach (var other in players) rig.Combat.IgnorePlayerColliders(other.Colliders);
             }
             var local = players[LocalPlayer - 1];
             follower.Bind(local.Motor.transform);
-            commands = new SpikeLocalCommands(() => local.State, () => epoch, SendInput);
+            commands = new NetworkPlayerCommands(() => local.State, () => epoch, SendInput);
             local.Input.SetRoomAvailable(false);
             local.Input.Bind(commands, flow);
         }
@@ -133,16 +136,16 @@ namespace SpaceCrawler.Gameplay
 
         private void Approve(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
         {
-            response.Approved = Encoding.ASCII.GetString(request.Payload) == "SpaceCrawlerSpike1"
+            response.Approved = Encoding.ASCII.GetString(request.Payload) == "SpaceCrawlerSession2"
                 && (request.ClientNetworkId == NetworkManager.ServerClientId || network.ConnectedClientsIds.Count < 2);
             response.CreatePlayerObject = false;
             response.Pending = false;
-            if (!response.Approved) response.Reason = "The technical spike requires one host and one client with the same protocol.";
+            if (!response.Approved) response.Reason = "The local session requires one host and one client with the same protocol.";
         }
 
         private void Connected(ulong sender)
         {
-            if (Mode != SpikeMode.Host || sender == NetworkManager.ServerClientId) return;
+            if (Mode != SessionRole.Host || sender == NetworkManager.ServerClientId) return;
             if (!Authority.Connect(sender)) { network.DisconnectClient(sender); return; }
             remoteSender = sender;
             players[1].gameObject.SetActive(true);
@@ -151,7 +154,7 @@ namespace SpaceCrawler.Gameplay
             Readiness.Reset(loadedRoom, Progression.ConnectionsFrom(loadedRoom), true);
             entryStarted = Time.realtimeSinceStartupAsDouble;
             SendDescriptor();
-            Debug.Log($"[Spike] sender={sender} mapped to PlayerIdentity 2; host sender=0 maps to 1", this);
+            Debug.Log($"[Session] sender={sender} mapped to PlayerIdentity 2; host sender=0 maps to 1", this);
         }
 
         private void LoadHostRoom(RunRoomId destination)
@@ -193,7 +196,7 @@ namespace SpaceCrawler.Gameplay
         private void SendDescriptor()
         {
             if (!remoteSender.HasValue) return;
-            descriptor = new SpikeRunDescriptor { generationVersion = Run.GenerationVersion, seed = Run.Seed.ToString(), fingerprint = Fingerprint,
+            descriptor = new RunSessionDescriptor { generationVersion = Run.GenerationVersion, seed = Run.Seed.ToString(), fingerprint = Fingerprint,
                 epoch = epoch, currentRoom = Progression.CurrentRoomId.Value, destination = loadedRoom.Value,
                 state = (int)Progression.State, weapon = weapon.Id };
             SendJson(DescriptorMessage, remoteSender.Value, JsonUtility.ToJson(descriptor));
@@ -201,18 +204,18 @@ namespace SpaceCrawler.Gameplay
 
         private void ReceiveDescriptor(ulong sender, FastBufferReader reader)
         {
-            if (Mode != SpikeMode.Client || sender != NetworkManager.ServerClientId) return;
+            if (Mode != SessionRole.Client || sender != NetworkManager.ServerClientId) return;
             try
             {
                 reader.ReadValueSafe(out string json);
-                var incoming = JsonUtility.FromJson<SpikeRunDescriptor>(json);
-                if (incoming.protocol != 1 || incoming.epoch <= epoch) return;
+                var incoming = JsonUtility.FromJson<RunSessionDescriptor>(json);
+                if (incoming.protocol != 2 || incoming.epoch <= epoch) return;
                 var graph = Run ?? new RunGenerator().Generate(ulong.Parse(incoming.seed), generation.CreateConfiguration(), incoming.generationVersion);
                 if (graph.Seed.ToString() != incoming.seed || graph.GenerationVersion != incoming.generationVersion || GraphFingerprint.Compute(graph) != incoming.fingerprint)
                     throw new InvalidOperationException("Graph fingerprint/descriptor mismatch.");
                 if (incoming.weapon != knife.CreateConfiguration().Id && incoming.weapon != blaster.CreateConfiguration().Id)
-                    throw new InvalidOperationException("Unknown spike weapon definition.");
-                if (Run != null && incoming.weapon != weapon.Id) throw new InvalidOperationException("Equipment cannot change during this spike.");
+                    throw new InvalidOperationException("Unknown session weapon definition.");
+                if (Run != null && incoming.weapon != weapon.Id) throw new InvalidOperationException("Equipment cannot change during this session.");
                 Run = graph; Fingerprint = incoming.fingerprint; descriptor = incoming; epoch = incoming.epoch;
                 weapon = (incoming.weapon == knife.CreateConfiguration().Id ? knife : blaster).CreateConfiguration();
                 if (players[0] == null) { CreatePlayers(); SetUiGate(uiGate); }
@@ -223,8 +226,8 @@ namespace SpaceCrawler.Gameplay
                 var choices = Run.Connections.Where(c => c.From.Equals(loadedRoom)).ToArray();
                 rooms.LoadSharedRoom(Run, loadedRoom, choices, null);
                 foreach (var target in rooms.CurrentRoom.Targets) target.PresentAuthoritativeHealth(target.InitialHealth, target.InitialHealth);
-                SendJson(AckMessage, NetworkManager.ServerClientId, JsonUtility.ToJson(new SpikeRoomAck { epoch = epoch, room = loadedRoom.Value, fingerprint = Fingerprint }));
-                Debug.Log($"[Spike] client verified seed={Run.Seed} version={Run.GenerationVersion} fingerprint={Fingerprint} loaded={loadedRoom} epoch={epoch}", this);
+                SendJson(AckMessage, NetworkManager.ServerClientId, JsonUtility.ToJson(new RoomLoadAcknowledgment { epoch = epoch, room = loadedRoom.Value, fingerprint = Fingerprint }));
+                Debug.Log($"[Session] client verified seed={Run.Seed} version={Run.GenerationVersion} fingerprint={Fingerprint} loaded={loadedRoom} epoch={epoch}", this);
                 Changed?.Invoke();
             }
             catch (Exception exception) { Fail("Rejected host descriptor: " + exception.Message); }
@@ -232,16 +235,16 @@ namespace SpaceCrawler.Gameplay
 
         private void ReceiveAck(ulong sender, FastBufferReader reader)
         {
-            if (Mode != SpikeMode.Host || !remoteSender.HasValue || sender != remoteSender.Value) return;
+            if (Mode != SessionRole.Host || !remoteSender.HasValue || sender != remoteSender.Value) return;
             try
             {
-                reader.ReadValueSafe(out string json); var ack = JsonUtility.FromJson<SpikeRoomAck>(json);
+                reader.ReadValueSafe(out string json); var ack = JsonUtility.FromJson<RoomLoadAcknowledgment>(json);
                 if (ack.epoch != epoch || ack.room != loadedRoom.Value) return;
                 if (ack.fingerprint != Fingerprint) { Fail("Client graph fingerprint did not agree."); return; }
                 if (roomReady) return;
                 if (!Progression.TryCompleteEntry(loadedRoom)) { Fail("Core rejected shared room completion."); return; }
                 Authority.SetRunning(true, epoch); SetRoomReady(true);
-                Debug.Log($"[Spike] BOTH READY seed={Run.Seed} fingerprint={Fingerprint} room={Progression.CurrentRoomId} state={Progression.State} epoch={epoch} entered={Progression.RoomsEntered}", this);
+                Debug.Log($"[Session] BOTH READY seed={Run.Seed} fingerprint={Fingerprint} room={Progression.CurrentRoomId} state={Progression.State} epoch={epoch} entered={Progression.RoomsEntered}", this);
                 SendState();
             }
             catch (Exception exception) { Fail("Rejected room acknowledgement: " + exception.Message); }
@@ -255,10 +258,10 @@ namespace SpaceCrawler.Gameplay
             Changed?.Invoke();
         }
 
-        private void SendInput(SpikeInput input, bool reliable)
+        private void SendInput(PlayerInputMessage input, bool reliable)
         {
             if (stopped) return;
-            if (Mode == SpikeMode.Host) { Authority?.Submit(NetworkManager.ServerClientId, input, Time.realtimeSinceStartupAsDouble); return; }
+            if (Mode == SessionRole.Host) { Authority?.Submit(NetworkManager.ServerClientId, input, Time.realtimeSinceStartupAsDouble); return; }
             if (!network.IsConnectedClient) return;
             using (var writer = new FastBufferWriter(128, Allocator.Temp))
             {
@@ -270,9 +273,9 @@ namespace SpaceCrawler.Gameplay
 
         private void ReceiveInput(ulong sender, FastBufferReader reader)
         {
-            if (Mode != SpikeMode.Host) return;
-            try { reader.ReadValueSafe(out SpikeInput input); Authority.Submit(sender, input, Time.realtimeSinceStartupAsDouble); }
-            catch (Exception) { Debug.Log("[Spike] Rejected malformed input packet.", this); }
+            if (Mode != SessionRole.Host) return;
+            try { reader.ReadValueSafe(out PlayerInputMessage input); Authority.Submit(sender, input, Time.realtimeSinceStartupAsDouble); }
+            catch (Exception) { Debug.Log("[Session] Rejected malformed input packet.", this); }
         }
 
         private void SendJson(string name, ulong receiver, string json)
@@ -288,7 +291,7 @@ namespace SpaceCrawler.Gameplay
         {
             if (!remoteSender.HasValue || !network.IsListening) return;
             var choices = Progression.Choices;
-            var header = new SpikeStateHeader { Epoch = epoch, Tick = ++tick, CurrentRoom = Progression.CurrentRoomId.Value,
+            var header = new SessionStateHeader { Epoch = epoch, Tick = ++tick, CurrentRoom = Progression.CurrentRoomId.Value,
                 State = (int)Progression.State, RoomsEntered = Progression.RoomsEntered, Running = roomReady,
                 LeftReady = choices.Count > 0 ? Readiness.Count(choices[0].To) : 0,
                 RightReady = choices.Count > 1 ? Readiness.Count(choices[1].To) : 0 };
@@ -299,11 +302,11 @@ namespace SpaceCrawler.Gameplay
                 for (var i = 0; i < 2; i++) writer.WriteValueSafe(players[i].Capture(Authority.InputEnabled(i)));
                 writer.WriteValueSafe(rooms.CurrentRoom.Targets.Count);
                 foreach (var target in rooms.CurrentRoom.Targets)
-                    writer.WriteValueSafe(new SpikeTargetState { Identity = target.Identity.Value, Current = target.Health.Current, Maximum = target.Health.Maximum });
+                    writer.WriteValueSafe(new TargetStateSnapshot { Identity = target.Identity.Value, Current = target.Health.Current, Maximum = target.Health.Maximum });
                 var projectiles = players.Sum(p => p.Combat.Projectiles.Count);
                 writer.WriteValueSafe(projectiles);
                 foreach (var rig in players) foreach (var projectile in rig.Combat.Projectiles)
-                    writer.WriteValueSafe(new SpikeProjectileState { Owner = rig.State.Player.Value, Sequence = projectile.Execution.Sequence, Position = projectile.Position });
+                    writer.WriteValueSafe(new ProjectileStateSnapshot { Owner = rig.State.Player.Value, Sequence = projectile.Execution.Sequence, Position = projectile.Position });
                 network.CustomMessagingManager.SendNamedMessage(StateMessage, remoteSender.Value, writer, NetworkDelivery.UnreliableSequenced);
             }
             Changed?.Invoke();
@@ -311,18 +314,18 @@ namespace SpaceCrawler.Gameplay
 
         private void ReceiveState(ulong sender, FastBufferReader reader)
         {
-            if (Mode != SpikeMode.Client || sender != NetworkManager.ServerClientId || Run == null) return;
+            if (Mode != SessionRole.Client || sender != NetworkManager.ServerClientId || Run == null) return;
             try
             {
-                reader.ReadValueSafe(out SpikeStateHeader header);
+                reader.ReadValueSafe(out SessionStateHeader header);
                 if (header.Epoch != epoch || header.Tick <= lastTick || header.CurrentRoom != loadedRoom.Value || !header.Running) return;
                 lastTick = header.Tick; lastHeader = header;
-                for (var i = 0; i < 2; i++) { reader.ReadValueSafe(out SpikePlayerState state); players[i].Apply(state); }
+                for (var i = 0; i < 2; i++) { reader.ReadValueSafe(out PlayerStateSnapshot state); players[i].Apply(state); }
                 reader.ReadValueSafe(out int targets);
                 if (targets != rooms.CurrentRoom.Targets.Count) throw new InvalidOperationException("Target descriptor count mismatch.");
                 for (var i = 0; i < targets; i++)
                 {
-                    reader.ReadValueSafe(out SpikeTargetState target);
+                    reader.ReadValueSafe(out TargetStateSnapshot target);
                     if (rooms.CurrentRoom.Targets[i].Identity.Value != target.Identity) throw new InvalidOperationException("Target identity mismatch.");
                     rooms.CurrentRoom.Targets[i].PresentAuthoritativeHealth(target.Current, target.Maximum);
                 }
@@ -331,7 +334,7 @@ namespace SpaceCrawler.Gameplay
                 var present = new HashSet<(int, long)>();
                 for (var i = 0; i < projectileCount; i++)
                 {
-                    reader.ReadValueSafe(out SpikeProjectileState projectile);
+                    reader.ReadValueSafe(out ProjectileStateSnapshot projectile);
                     if (projectile.Owner != 1 && projectile.Owner != 2) throw new InvalidOperationException("Unknown projectile owner.");
                     var key = (projectile.Owner, projectile.Sequence); present.Add(key);
                     if (!projectileViews.TryGetValue(key, out var view))
@@ -356,8 +359,8 @@ namespace SpaceCrawler.Gameplay
             var local = players[LocalPlayer - 1];
             if (PollLocalDevices && local != null) local.Input.SampleMovement();
             if (commands != null && now >= nextInput) { nextInput = now + 1.0 / 30; commands.SendMovement(); }
-            if (Debug.isDebugBuild) SpikeDiagnostics.Record(this, now);
-            if (Mode != SpikeMode.Host) return;
+            if (Debug.isDebugBuild) SessionDiagnostics.Record(this, now);
+            if (Mode != SessionRole.Host) return;
             Authority.Advance(now);
             if (roomReady && Readiness.TryGetSharedDestination(out var destination)) BeginTransition(destination);
             if (!roomReady && remoteSender.HasValue && now - entryStarted > 10) Fail("Room agreement timed out.");
@@ -366,7 +369,7 @@ namespace SpaceCrawler.Gameplay
         private void LateUpdate()
         {
             if (stopped || players[0] == null) return;
-            if (Mode == SpikeMode.Host) foreach (var rig in players) rig.Motor.CaptureState();
+            if (Mode == SessionRole.Host) foreach (var rig in players) rig.Motor.CaptureState();
             follower.Follow();
             var local = players[LocalPlayer - 1];
             if (PollLocalDevices)
@@ -375,7 +378,7 @@ namespace SpaceCrawler.Gameplay
                 local.Input.SampleAttack();
             }
             foreach (var rig in players) rig.Present();
-            if (Mode == SpikeMode.Host && Time.realtimeSinceStartupAsDouble >= nextSnapshot)
+            if (Mode == SessionRole.Host && Time.realtimeSinceStartupAsDouble >= nextSnapshot)
             { nextSnapshot = Time.realtimeSinceStartupAsDouble + 0.05; SendState(); }
         }
 
@@ -383,19 +386,19 @@ namespace SpaceCrawler.Gameplay
         {
             var text = new StringBuilder($"Role={Mode}; localPlayer={LocalPlayer}; connected={network.IsConnectedClient}; ready={roomReady}; epoch={epoch}; failure={Failure}\n");
             if (Run == null) return text.ToString();
-            text.AppendLine($"Seed={Run.Seed}; version={Run.GenerationVersion}; fingerprint={Fingerprint}; loaded={loadedRoom}; room={(Mode == SpikeMode.Host ? Progression.CurrentRoomId.Value : lastHeader.CurrentRoom)}; state={(Mode == SpikeMode.Host ? Progression.State : (RoomFlowState)lastHeader.State)}; entered={(Mode == SpikeMode.Host ? Progression.RoomsEntered : lastHeader.RoomsEntered)}; roomChildren={rooms.RoomContainer.childCount}");
+            text.AppendLine($"Seed={Run.Seed}; version={Run.GenerationVersion}; fingerprint={Fingerprint}; loaded={loadedRoom}; room={(Mode == SessionRole.Host ? Progression.CurrentRoomId.Value : lastHeader.CurrentRoom)}; state={(Mode == SessionRole.Host ? Progression.State : (RoomFlowState)lastHeader.State)}; entered={(Mode == SessionRole.Host ? Progression.RoomsEntered : lastHeader.RoomsEntered)}; roomChildren={rooms.RoomContainer.childCount}");
             var choices = Run.Connections.Where(c => c.From.Equals(loadedRoom)).ToArray();
             for (var i = 0; i < choices.Length; i++)
-                text.AppendLine($"Exit {(choices.Length == 1 ? "CENTER" : i == 0 ? "LEFT" : "RIGHT")} -> {choices[i].To}: {(Mode == SpikeMode.Host ? Readiness.Count(choices[i].To) : i == 0 ? lastHeader.LeftReady : lastHeader.RightReady)}/2 ready");
-            if (Run.GetRoom(loadedRoom).IsTerminal) text.AppendLine("Terminal room reached. No victory objective has been defined. No forward exits.");
+                text.AppendLine($"Exit {(choices.Length == 1 ? "CENTER" : i == 0 ? "LEFT" : "RIGHT")} -> {choices[i].To}: {(Mode == SessionRole.Host ? Readiness.Count(choices[i].To) : i == 0 ? lastHeader.LeftReady : lastHeader.RightReady)}/2 ready");
+            if (Run.GetRoom(loadedRoom).IsTerminal) text.AppendLine("Terminal room reached. No forward exits.");
             foreach (var rig in players)
             {
                 var state = rig.State;
-                text.AppendLine($"P{state.Player.Value}: position={state.Position}; velocity={state.Velocity}; aim={state.AimDirection}; attacks={(Mode == SpikeMode.Host ? rig.Combat.Simulation.AcceptedAttackCount : rig.LastSnapshot.Attacks)}; cooldown={(Mode == SpikeMode.Host ? rig.Combat.Simulation.CooldownRemaining : rig.LastSnapshot.Cooldown)}; input={(Mode == SpikeMode.Host ? Authority.InputEnabled(state.Player.Value - 1) : rig.LastSnapshot.InputEnabled)}");
+                text.AppendLine($"P{state.Player.Value}: position={state.Position}; velocity={state.Velocity}; aim={state.AimDirection}; attacks={(Mode == SessionRole.Host ? rig.Combat.Simulation.AcceptedAttackCount : rig.LastSnapshot.Attacks)}; cooldown={(Mode == SessionRole.Host ? rig.Combat.Simulation.CooldownRemaining : rig.LastSnapshot.Cooldown)}; input={(Mode == SessionRole.Host ? Authority.InputEnabled(state.Player.Value - 1) : rig.LastSnapshot.InputEnabled)}");
             }
             if (rooms.CurrentRoom != null) foreach (var target in rooms.CurrentRoom.Targets)
-                text.AppendLine($"Target {target.Identity.Value}: health={(Mode == SpikeMode.Host ? target.Health.Current : target.DisplayedHealth)}");
-            text.AppendLine($"Projectiles={(Mode == SpikeMode.Host ? players.Sum(p => p.Combat.Projectiles.Count) : projectileViews.Count)}; localPaused={flow.State == ApplicationState.Paused}; camera={follower.transform.position}; rotation={follower.transform.eulerAngles}");
+                text.AppendLine($"Target {target.Identity.Value}: health={(Mode == SessionRole.Host ? target.Health.Current : target.DisplayedHealth)}");
+            text.AppendLine($"Projectiles={(Mode == SessionRole.Host ? players.Sum(p => p.Combat.Projectiles.Count) : projectileViews.Count)}; localPaused={flow.State == ApplicationState.Paused}; camera={follower.transform.position}; rotation={follower.transform.eulerAngles}");
             if (Authority != null) text.AppendLine($"OwnershipRejected={Authority.RejectedOwnership}; staleRejected={Authority.RejectedStale}; inputTimeouts={Authority.TimedOut}");
             return text.ToString();
         }
@@ -406,14 +409,14 @@ namespace SpaceCrawler.Gameplay
         {
             if (stopped) return;
             // A refused third connection is not the accepted partner leaving this run.
-            if (Mode == SpikeMode.Host && (!remoteSender.HasValue || sender != remoteSender.Value)) return;
+            if (Mode == SessionRole.Host && (!remoteSender.HasValue || sender != remoteSender.Value)) return;
             Authority?.Disconnect(); Readiness.Disconnect();
             if (players[1] != null) players[1].gameObject.SetActive(false);
-            Fail("Peer disconnected; two-player spike stopped safely.");
+            Fail("Peer disconnected; two-player session stopped safely.");
         }
         private void TransportFailed() => Fail("Direct transport failed.");
         private void Fail(string reason)
-        { if (stopRequested || stopped) return; Failure = reason; stopRequested = true; Debug.Log("[Spike] " + reason, this); Changed?.Invoke(); }
+        { if (stopRequested || stopped) return; Failure = reason; stopRequested = true; Debug.Log("[Session] " + reason, this); Changed?.Invoke(); }
         public void Stop()
         {
             if (stopped) return;

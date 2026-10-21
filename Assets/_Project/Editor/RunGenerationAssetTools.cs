@@ -8,12 +8,12 @@ using UnityEngine;
 namespace SpaceCrawler.Editor
 {
     /// <summary>Authors only static graph data and the existing session's configuration reference.</summary>
-    public static class GenerationFoundationAssets
+    public static class RunGenerationAssetTools
     {
         public const string GenerationPath = "Assets/_Project/Data/Runs/DefaultRun.asset";
         public const string RoomsPath = "Assets/_Project/Data/Rooms";
 
-        [MenuItem("Tools/Space Crawler/Phase 4/Create Generation Definitions")]
+        [MenuItem("Tools/Space Crawler/Run Generation/Create Generation Definitions")]
         public static void CreateDefinitions()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || EditorApplication.isUpdating)
@@ -50,7 +50,7 @@ namespace SpaceCrawler.Editor
                 AssetDatabase.CreateAsset(generation, GenerationPath);
             }
             generation.CreateConfiguration();
-            var contents = PrefabUtility.LoadPrefabContents(CombatFoundationAssets.FixturePath);
+            var contents = PrefabUtility.LoadPrefabContents(CombatAssetTools.FixturePath);
             try
             {
                 var data = new SerializedObject(contents.GetComponent<GameplaySession>());
@@ -59,7 +59,7 @@ namespace SpaceCrawler.Editor
                 {
                     reference.objectReferenceValue = generation;
                     data.ApplyModifiedPropertiesWithoutUndo();
-                    PrefabUtility.SaveAsPrefabAsset(contents, CombatFoundationAssets.FixturePath);
+                    PrefabUtility.SaveAsPrefabAsset(contents, CombatAssetTools.FixturePath);
                 }
             }
             finally { PrefabUtility.UnloadPrefabContents(contents); AssetDatabase.SaveAssets(); }

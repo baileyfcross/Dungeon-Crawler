@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace SpaceCrawler.Editor
 {
-    /// <summary>Live registry inspection and the explicitly approved, dependency-guarded spike installation.</summary>
+    /// <summary>Live registry inspection and the explicitly approved, dependency-guarded network package installation.</summary>
     public static class MultiplayerRegistryAudit
     {
         private static readonly string[] Queries = {
@@ -33,7 +33,7 @@ namespace SpaceCrawler.Editor
             public List<Package> packages = new List<Package>();
         }
 
-        [MenuItem("Tools/Space Crawler/Phase 5A/Inspect Registry")]
+        [MenuItem("Tools/Space Crawler/Multiplayer/Inspect Registry")]
         public static void Inspect()
         {
             if (request != null || EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode)
@@ -53,7 +53,7 @@ namespace SpaceCrawler.Editor
                 Write();
                 EditorApplication.update -= Poll;
                 request = null;
-                Debug.Log("[Phase5A] Read-only registry inspection complete: Logs/Phase5A/RegistryAudit.json");
+                Debug.Log("[Registry] Read-only registry inspection complete: Logs/Validation/RegistryAudit.json");
                 return;
             }
             request = Client.Search(Queries[queryIndex], false);
@@ -85,16 +85,16 @@ namespace SpaceCrawler.Editor
 
         private static void Write()
         {
-            Directory.CreateDirectory("Logs/Phase5A");
-            File.WriteAllText("Logs/Phase5A/RegistryAudit.json", JsonUtility.ToJson(report, true));
+            Directory.CreateDirectory("Logs/Validation");
+            File.WriteAllText("Logs/Validation/RegistryAudit.json", JsonUtility.ToJson(report, true));
         }
 
-        [MenuItem("Tools/Space Crawler/Phase 5A/Install Verified Stack")]
+        [MenuItem("Tools/Space Crawler/Multiplayer/Install Verified Stack")]
         public static void InstallVerifiedStack()
         {
             if (request != null || installation != null || EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode)
                 throw new InvalidOperationException("Package installation requires an idle Editor.");
-            var audit = JsonUtility.FromJson<Audit>(File.ReadAllText("Logs/Phase5A/RegistryAudit.json"));
+            var audit = JsonUtility.FromJson<Audit>(File.ReadAllText("Logs/Validation/RegistryAudit.json"));
             if (audit.status != "Completed" || audit.unity != Application.unityVersion)
                 throw new InvalidOperationException("Complete this Editor's registry inspection first.");
             var wanted = new Dictionary<string, string>(StringComparer.Ordinal) {
@@ -112,7 +112,7 @@ namespace SpaceCrawler.Editor
                         throw new InvalidOperationException("STOP: unexpected dependency addition/upgrade: " + dependency.name + "@" + dependency.version);
                 }
             }
-            File.WriteAllText("Logs/Phase5A/PackageInstall.txt", "Started: " + DateTime.UtcNow.ToString("O") + "\nNGO 2.13.2 / Unity Transport 2.7.4; other dependencies already installed.\n");
+            File.WriteAllText("Logs/Validation/PackageInstall.txt", "Started: " + DateTime.UtcNow.ToString("O") + "\nNGO 2.13.2 / Unity Transport 2.7.4; other dependencies already installed.\n");
             installation = Client.AddAndRemove(wanted.Select(p => p.Key + "@" + p.Value).ToArray());
             EditorApplication.update += PollInstallation;
         }
@@ -120,7 +120,7 @@ namespace SpaceCrawler.Editor
         private static void PollInstallation()
         {
             if (installation == null || !installation.IsCompleted) return;
-            File.AppendAllText("Logs/Phase5A/PackageInstall.txt", installation.Status + ": " + installation.Error?.message + "\n");
+            File.AppendAllText("Logs/Validation/PackageInstall.txt", installation.Status + ": " + installation.Error?.message + "\n");
             installation = null;
             EditorApplication.update -= PollInstallation;
         }

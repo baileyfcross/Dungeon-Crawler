@@ -16,18 +16,18 @@ namespace SpaceCrawler.Gameplay
         [SerializeField] private GameplaySession gameplaySession;
         [SerializeField] private MultiplayerSession multiplayerSession;
         private CancellationToken lifetime;
-        private SpikeMode pendingSpike;
-        private bool autoSpikeStarted;
+        private SessionRole pendingSessionRole;
+        private bool automaticSessionStarted;
 
         public ApplicationFlow Flow { get; private set; }
         public ApplicationScreen CurrentScreen { get; private set; }
         public GameplaySession CurrentGameplay { get; private set; }
         public MultiplayerSession CurrentMultiplayer { get; private set; }
 
-        public bool StartSpike(SpikeMode mode)
+        public bool StartMultiplayerSession(SessionRole mode)
         {
-            if (!Debug.isDebugBuild || mode == SpikeMode.None || Flow.State != ApplicationState.MainMenu) return false;
-            pendingSpike = mode;
+            if (!Debug.isDebugBuild || mode == SessionRole.None || Flow.State != ApplicationState.MainMenu) return false;
+            pendingSessionRole = mode;
             return Flow.TryRequest(ApplicationCommand.NewGame);
         }
 
@@ -67,10 +67,10 @@ namespace SpaceCrawler.Gameplay
                 var screenPrefab = destination == ApplicationState.MainMenu ? mainMenuScreen : gameplayScreen;
                 if (screenPrefab == null || !Application.CanStreamedLevelBeLoaded(scenePath))
                     throw new InvalidOperationException($"Missing screen or build scene for {destination}: {scenePath}");
-                if (destination == ApplicationState.Gameplay && pendingSpike == SpikeMode.None && (gameplaySession == null || gameplaySession.Rooms == null))
+                if (destination == ApplicationState.Gameplay && pendingSessionRole == SessionRole.None && (gameplaySession == null || gameplaySession.Rooms == null))
                     throw new InvalidOperationException("Missing room-enabled gameplay session prefab.");
-                if (destination == ApplicationState.Gameplay && pendingSpike != SpikeMode.None && multiplayerSession == null)
-                    throw new InvalidOperationException("Missing explicitly authored multiplayer spike composition.");
+                if (destination == ApplicationState.Gameplay && pendingSessionRole != SessionRole.None && multiplayerSession == null)
+                    throw new InvalidOperationException("Missing explicitly authored multiplayer session composition.");
                 if (CurrentMultiplayer != null)
                 { CurrentMultiplayer.Stop(); Destroy(CurrentMultiplayer.gameObject); CurrentMultiplayer = null; }
 
@@ -82,7 +82,7 @@ namespace SpaceCrawler.Gameplay
                 lifetime.ThrowIfCancellationRequested();
                 if (destination == ApplicationState.Gameplay)
                 {
-                    if (pendingSpike == SpikeMode.None)
+                    if (pendingSessionRole == SessionRole.None)
                     {
                         CurrentGameplay = Instantiate(gameplaySession);
                         CurrentGameplay.Bind(new PlayerIdentity(1), Flow);
@@ -91,16 +91,16 @@ namespace SpaceCrawler.Gameplay
                     {
                         CurrentGameplay = null;
                         CurrentMultiplayer = Instantiate(multiplayerSession);
-                        var address = SpikeDiagnostics.Option("--spike-address") ?? "127.0.0.1";
-                        var port = ushort.TryParse(SpikeDiagnostics.Option("--spike-port"), out var requestedPort) ? requestedPort : (ushort)7777;
-                        ulong? seed = pendingSpike == SpikeMode.Host && ulong.TryParse(SpikeDiagnostics.Option("--spike-seed"), out var requestedSeed) ? requestedSeed : (ulong?)null;
-                        CurrentMultiplayer.Bind(pendingSpike, Flow, address, port, seed);
+                        var address = SessionDiagnostics.Option("--session-address") ?? "127.0.0.1";
+                        var port = ushort.TryParse(SessionDiagnostics.Option("--session-port"), out var requestedPort) ? requestedPort : (ushort)7777;
+                        ulong? seed = pendingSessionRole == SessionRole.Host && ulong.TryParse(SessionDiagnostics.Option("--session-seed"), out var requestedSeed) ? requestedSeed : (ulong?)null;
+                        CurrentMultiplayer.Bind(pendingSessionRole, Flow, address, port, seed);
                     }
                 }
-                else { CurrentGameplay = null; pendingSpike = SpikeMode.None; }
+                else { CurrentGameplay = null; pendingSessionRole = SessionRole.None; }
                 CurrentScreen = Instantiate(screenPrefab);
                 CurrentScreen.Bind(Flow);
-                CurrentScreen.BindSpikeMenu(mode => StartSpike(mode));
+                CurrentScreen.BindLocalSessionControls(mode => StartMultiplayerSession(mode));
                 if (CurrentGameplay != null)
                 {
                     CurrentGameplay.Input.SetUiGate(CurrentScreen.IsPointerOverInteractiveUi);
@@ -113,9 +113,9 @@ namespace SpaceCrawler.Gameplay
                     CurrentScreen.BindMultiplayer(CurrentMultiplayer);
                 }
                 Flow.CompleteLoading(destination);
-                var automatic = SpikeDiagnostics.Option("--spike-role");
-                if (destination == ApplicationState.MainMenu && !autoSpikeStarted && (automatic == "host" || automatic == "client"))
-                { autoSpikeStarted = true; StartSpike(automatic == "host" ? SpikeMode.Host : SpikeMode.Client); }
+                var automatic = SessionDiagnostics.Option("--session-role");
+                if (destination == ApplicationState.MainMenu && !automaticSessionStarted && (automatic == "host" || automatic == "client"))
+                { automaticSessionStarted = true; StartMultiplayerSession(automatic == "host" ? SessionRole.Host : SessionRole.Client); }
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
             {

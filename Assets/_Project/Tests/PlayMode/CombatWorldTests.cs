@@ -21,7 +21,7 @@ namespace SpaceCrawler.Tests.PlayMode
 
         private IEnumerator StartFixture(string weapon, float lifetime = 2, float speed = 9)
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/Gameplay/ControlsTestArea.prefab");
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/Gameplay/PlayerTestEnvironment.prefab");
             session = Object.Instantiate(prefab).GetComponent<GameplaySession>();
             definition = Object.Instantiate(AssetDatabase.LoadAssetAtPath<WeaponDefinition>($"Assets/_Project/Data/Weapons/{weapon}.asset"));
             var weaponData = new SerializedObject(definition);

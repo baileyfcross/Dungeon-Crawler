@@ -5,7 +5,7 @@ using CoreVector = System.Numerics.Vector2;
 namespace SpaceCrawler.Gameplay
 {
     /// <summary>Sender ownership/freshness adapter. Existing Core systems still decide gameplay rules.</summary>
-    public sealed class SpikeAuthority
+    public sealed class SessionAuthority
     {
         public const double InputTimeoutSeconds = 0.35;
         private readonly ulong hostSender;
@@ -22,7 +22,7 @@ namespace SpaceCrawler.Gameplay
         public int RejectedStale { get; private set; }
         public int TimedOut { get; private set; }
 
-        public SpikeAuthority(ulong hostSender, PlayerSimulation one, PlayerSimulation two, Func<int, AttackIntent, bool> attack)
+        public SessionAuthority(ulong hostSender, PlayerSimulation one, PlayerSimulation two, Func<int, AttackIntent, bool> attack)
         {
             if (one.State.Player.Value != 1 || two.State.Player.Value != 2) throw new ArgumentException("Explicit player 1/2 simulations required.");
             this.hostSender = hostSender; players = new[] { one, two }; this.attack = attack;
@@ -44,7 +44,7 @@ namespace SpaceCrawler.Gameplay
             Running = running && BothConnected; Epoch = epoch;
             for (var i = 0; i < 2; i++) { input[i] = false; players[i].SetActive(Running); Neutral(i); }
         }
-        public bool Submit(ulong actualSender, SpikeInput command, double now)
+        public bool Submit(ulong actualSender, PlayerInputMessage command, double now)
         {
             if (!TryIdentity(actualSender, out var identity) || identity.Value != command.ClaimedPlayer)
             { RejectedOwnership++; return false; }

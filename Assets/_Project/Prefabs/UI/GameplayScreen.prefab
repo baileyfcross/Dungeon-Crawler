@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 1030922388948663316}
   - component: {fileID: 1494231167733891751}
   m_Layer: 0
-  m_Name: GameplayPlaceholder
+  m_Name: GameplayScreen
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

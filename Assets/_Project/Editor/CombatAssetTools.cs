@@ -10,16 +10,16 @@ using Object = UnityEngine.Object;
 namespace SpaceCrawler.Editor
 {
     /// <summary>Authors the approved primitive combat fixture without changing runtime equipment in play.</summary>
-    public static class CombatFoundationAssets
+    public static class CombatAssetTools
     {
-        private const string Root = FoundationAssets.Root;
-        public const string FixturePath = Root + "/Prefabs/Gameplay/ControlsTestArea.prefab";
+        private const string Root = ApplicationAssetTools.Root;
+        public const string FixturePath = Root + "/Prefabs/Gameplay/PlayerTestEnvironment.prefab";
         public const string KnifePath = Root + "/Data/Weapons/Knife.asset";
         public const string BlasterPath = Root + "/Data/Weapons/Blaster.asset";
         private const string ProjectilePath = Root + "/Prefabs/Combat/BlasterProjectile.prefab";
         private const string TargetPath = Root + "/Prefabs/Combat/DamageableTestTarget.prefab";
 
-        [MenuItem("Tools/Space Crawler/Phase 3/Create Combat Fixture")]
+        [MenuItem("Tools/Space Crawler/Combat/Create Combat Fixture")]
         public static void CreateCombatFixture()
         {
             RequireIdle();
@@ -28,7 +28,7 @@ namespace SpaceCrawler.Editor
             var knife = CreateWeapon(KnifePath, "weapon.knife", "Knife", AttackKind.Melee, 25, 0.5f);
             CreateWeapon(BlasterPath, "weapon.blaster", "Blaster", AttackKind.Projectile, 20, 0.3f);
             var material = AssetDatabase.LoadAssetAtPath<Material>(Root + "/Art/Materials/ControlsUnlit.mat");
-            if (material == null) throw new InvalidOperationException("Preserve and create the Phase 2 fixture first.");
+            if (material == null) throw new InvalidOperationException("Preserve and create the player controls fixture first.");
             CreateProjectile(material);
             CreateTarget(material);
             var contents = PrefabUtility.LoadPrefabContents(FixturePath);
@@ -73,15 +73,15 @@ namespace SpaceCrawler.Editor
             finally { PrefabUtility.UnloadPrefabContents(contents); AssetDatabase.SaveAssets(); }
         }
 
-        [MenuItem("Tools/Space Crawler/Phase 3/Use Knife Default")]
+        [MenuItem("Tools/Space Crawler/Combat/Use Knife Default")]
         public static void UseKnifeDefault() => SetDefault(KnifePath);
-        [MenuItem("Tools/Space Crawler/Phase 3/Use Blaster Default")]
+        [MenuItem("Tools/Space Crawler/Combat/Use Blaster Default")]
         public static void UseBlasterDefault() => SetDefault(BlasterPath);
 
         private static void SetDefault(string path)
         {
             RequireIdle();
-            foreach (var fixture in new[] { FixturePath, RoomFoundationAssets.SessionPath })
+            foreach (var fixture in new[] { FixturePath, RoomAssetTools.SessionPath })
             {
                 if (AssetDatabase.LoadAssetAtPath<GameObject>(fixture) == null) continue;
                 var contents = PrefabUtility.LoadPrefabContents(fixture);

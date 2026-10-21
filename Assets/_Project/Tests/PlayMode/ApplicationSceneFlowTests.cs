@@ -79,6 +79,10 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(roots, Has.Length.EqualTo(1));
             Assert.That(roots[0], Is.SameAs(expected));
             Assert.That(Object.FindObjectsByType<ApplicationScreen>(FindObjectsSortMode.None), Has.Length.EqualTo(1));
+            expected.CurrentScreen.View.Query<TextElement>().ForEach(element =>
+                Assert.That(element.text ?? string.Empty,
+                    Does.Not.Match(@"(?i)\b(?:phase\s*\d|spike|prototype|milestone)\b|has been defined"),
+                    $"Game UI must use functional copy: {element.name}"));
         }
 
         private static IEnumerator WaitFor(Func<bool> condition)

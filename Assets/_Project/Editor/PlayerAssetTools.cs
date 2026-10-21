@@ -11,14 +11,14 @@ using Object = UnityEngine.Object;
 
 namespace SpaceCrawler.Editor
 {
-    /// <summary>Authors only the primitive Phase 2 control fixture using Unity serialization APIs.</summary>
-    public static class PlayerFoundationAssets
+    /// <summary>Authors only the primitive player controls control fixture using Unity serialization APIs.</summary>
+    public static class PlayerAssetTools
     {
-        private const string Root = FoundationAssets.Root;
-        private const string PrefabPath = Root + "/Prefabs/Gameplay/ControlsTestArea.prefab";
+        private const string Root = ApplicationAssetTools.Root;
+        private const string PrefabPath = Root + "/Prefabs/Gameplay/PlayerTestEnvironment.prefab";
         private const string SpriteRoot = "Packages/com.unity.2d.sprite/Editor/ObjectMenuCreation/DefaultAssets/Textures/v2/";
 
-        [MenuItem("Tools/Space Crawler/Phase 2/Create Controls Fixture")]
+        [MenuItem("Tools/Space Crawler/Player/Create Controls Fixture")]
         public static void CreateControlsFixture()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || EditorApplication.isUpdating)
@@ -42,22 +42,22 @@ namespace SpaceCrawler.Editor
             }
             if (AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath) == null) CreatePrefab(material, physics);
 
-            var gameplayScene = EditorSceneManager.OpenScene(FoundationAssets.GameplayPath);
+            var gameplayScene = EditorSceneManager.OpenScene(ApplicationAssetTools.GameplayPath);
             foreach (var sceneRoot in gameplayScene.GetRootGameObjects())
                 if (sceneRoot.name == "Main Camera" && sceneRoot.TryGetComponent<Camera>(out _)) Object.DestroyImmediate(sceneRoot);
             if (!EditorSceneManager.SaveScene(gameplayScene)) throw new IOException("Could not save Gameplay.");
 
-            var boot = EditorSceneManager.OpenScene(FoundationAssets.BootPath);
+            var boot = EditorSceneManager.OpenScene(ApplicationAssetTools.BootPath);
             var root = boot.GetRootGameObjects().Select(go => go.GetComponent<ApplicationRoot>()).Single(component => component != null);
             SetReference(root, "gameplaySession", AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath).GetComponent<GameplaySession>());
             if (!EditorSceneManager.SaveScene(boot)) throw new IOException("Could not save Boot wiring.");
             AssetDatabase.SaveAssets();
-            FoundationAssets.OpenBoot();
+            ApplicationAssetTools.OpenBoot();
         }
 
         private static void CreatePrefab(Material material, PhysicsMaterial2D physics)
         {
-            var temporary = new GameObject("Controls Test Area");
+            var temporary = new GameObject("Player Test Environment");
             try
             {
                 var square = LoadSprite("Square");

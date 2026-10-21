@@ -90,7 +90,7 @@ namespace SpaceCrawler.Tests.PlayMode
                 VerifyCurrentRoom();
             }
             Assert.That(root.CurrentScreen.View.Q<Label>("run-readout").text,
-                Does.Contain("Terminal room reached").And.Contain("No victory objective has been defined").And.Contain("No forward exits"));
+                Does.Contain("Terminal room reached").And.Contain("No forward exits").And.Not.Contain("has been defined"));
             Assert.That(root.Flow.State, Is.EqualTo(ApplicationState.Gameplay));
             Assert.That(session.Input.GameplayInputEnabled, Is.True);
             root.Flow.TryRequest(ApplicationCommand.ReturnToMainMenu);

@@ -11,18 +11,18 @@ using Object = UnityEngine.Object;
 
 namespace SpaceCrawler.Editor
 {
-    public static class MultiplayerFoundationAssets
+    public static class MultiplayerAssetTools
     {
         public const string RigPath = "Assets/_Project/Prefabs/Gameplay/NetworkPlayerRig.prefab";
         public const string SessionPath = "Assets/_Project/Prefabs/Gameplay/MultiplayerSession.prefab";
 
-        [MenuItem("Tools/Space Crawler/Phase 5A/Create Spike Assets")]
+        [MenuItem("Tools/Space Crawler/Multiplayer/Create Multiplayer Assets")]
         public static void Create()
         {
             RequireIdle();
             foreach (RoomCategory category in Enum.GetValues(typeof(RoomCategory)))
             {
-                var path = RoomFoundationAssets.RoomsPath + "/" + category + ".prefab";
+                var path = RoomAssetTools.RoomsPath + "/" + category + ".prefab";
                 var root = PrefabUtility.LoadPrefabContents(path);
                 try
                 {
@@ -36,10 +36,10 @@ namespace SpaceCrawler.Editor
             }
             if (AssetDatabase.LoadAssetAtPath<NetworkPlayerRig>(RigPath) == null) CreateRig();
             if (AssetDatabase.LoadAssetAtPath<MultiplayerSession>(SessionPath) == null) CreateSession();
-            var scene = EditorSceneManager.OpenScene(FoundationAssets.BootPath, OpenSceneMode.Single);
+            var scene = EditorSceneManager.OpenScene(ApplicationAssetTools.BootPath, OpenSceneMode.Single);
             var application = scene.GetRootGameObjects().Select(o => o.GetComponent<ApplicationRoot>()).Single(r => r != null);
             Set(application, "multiplayerSession", AssetDatabase.LoadAssetAtPath<MultiplayerSession>(SessionPath));
-            if (!EditorSceneManager.SaveScene(scene)) throw new InvalidOperationException("Could not save spike Boot composition.");
+            if (!EditorSceneManager.SaveScene(scene)) throw new InvalidOperationException("Could not save multiplayer Boot composition.");
             AssetDatabase.SaveAssets();
         }
 
@@ -51,7 +51,7 @@ namespace SpaceCrawler.Editor
 
         private static void CreateRig()
         {
-            var root = PrefabUtility.LoadPrefabContents(RoomFoundationAssets.SessionPath);
+            var root = PrefabUtility.LoadPrefabContents(RoomAssetTools.SessionPath);
             try
             {
                 var original = root.GetComponent<GameplaySession>();
@@ -76,7 +76,7 @@ namespace SpaceCrawler.Editor
 
         private static void CreateSession()
         {
-            var source = AssetDatabase.LoadAssetAtPath<GameplaySession>(RoomFoundationAssets.SessionPath);
+            var source = AssetDatabase.LoadAssetAtPath<GameplaySession>(RoomAssetTools.SessionPath);
             var root = new GameObject("Multiplayer Technical Session");
             try
             {
@@ -91,21 +91,21 @@ namespace SpaceCrawler.Editor
                 Set(session, "network", manager); Set(session, "transport", transport); Set(session, "rooms", loader);
                 Set(session, "follower", camera); Set(session, "playerPrefab", AssetDatabase.LoadAssetAtPath<NetworkPlayerRig>(RigPath));
                 Set(session, "generation", new SerializedObject(source).FindProperty("generation").objectReferenceValue);
-                Set(session, "knife", AssetDatabase.LoadAssetAtPath<WeaponDefinition>(CombatFoundationAssets.KnifePath));
-                Set(session, "blaster", AssetDatabase.LoadAssetAtPath<WeaponDefinition>(CombatFoundationAssets.BlasterPath));
+                Set(session, "knife", AssetDatabase.LoadAssetAtPath<WeaponDefinition>(CombatAssetTools.KnifePath));
+                Set(session, "blaster", AssetDatabase.LoadAssetAtPath<WeaponDefinition>(CombatAssetTools.BlasterPath));
                 PrefabUtility.SaveAsPrefabAsset(root, SessionPath);
             }
             finally { Object.DestroyImmediate(root); }
         }
 
-        [MenuItem("Tools/Space Crawler/Phase 5A/Use Knife Default")]
+        [MenuItem("Tools/Space Crawler/Multiplayer/Use Knife Default")]
         public static void Knife() => SetFlag("useBlaster", false);
-        [MenuItem("Tools/Space Crawler/Phase 5A/Use Blaster Default")]
+        [MenuItem("Tools/Space Crawler/Multiplayer/Use Blaster Default")]
         public static void Blaster() => SetFlag("useBlaster", true);
-        [MenuItem("Tools/Space Crawler/Phase 5A/Use Seed 42")]
-        public static void Seed42() => SetFlag("useDevelopmentSeed", true);
-        [MenuItem("Tools/Space Crawler/Phase 5A/Use Random Seed")]
-        public static void RandomSeed() => SetFlag("useDevelopmentSeed", false);
+        [MenuItem("Tools/Space Crawler/Multiplayer/Use Seed 42")]
+        public static void Seed42() => SetFlag("useFixedSeed", true);
+        [MenuItem("Tools/Space Crawler/Multiplayer/Use Random Seed")]
+        public static void RandomSeed() => SetFlag("useFixedSeed", false);
         private static void SetFlag(string name, bool value)
         {
             RequireIdle();

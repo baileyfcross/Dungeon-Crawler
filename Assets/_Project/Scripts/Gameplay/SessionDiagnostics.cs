@@ -5,7 +5,7 @@ using UnityEngine;
 namespace SpaceCrawler.Gameplay
 {
     /// <summary>Development-process launch options and read-only validation evidence; no gameplay command file.</summary>
-    public static class SpikeDiagnostics
+    public static class SessionDiagnostics
     {
         private static double nextReport;
         public static string Option(string name)
@@ -17,7 +17,7 @@ namespace SpaceCrawler.Gameplay
         }
         public static void Record(MultiplayerSession session, double now)
         {
-            var path = Option("--spike-report");
+            var path = Option("--session-report");
             if (string.IsNullOrEmpty(path) || now < nextReport) return;
             nextReport = now + 0.25;
             File.WriteAllText(path, "UTC=" + DateTime.UtcNow.ToString("O") + "\n" + session.Describe());
