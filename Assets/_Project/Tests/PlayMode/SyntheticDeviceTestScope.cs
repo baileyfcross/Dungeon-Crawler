@@ -10,10 +10,18 @@ namespace SpaceCrawler.Tests.PlayMode
     {
         private readonly List<InputDevice> temporarilyDisabled = new List<InputDevice>();
         private InputSettings.BackgroundBehavior previousBackgroundBehavior;
+#if UNITY_EDITOR
+        private string previousSaveDirectory;
+#endif
 
         [OneTimeSetUp]
         public void IsolateSyntheticInput()
         {
+#if UNITY_EDITOR
+            previousSaveDirectory = SpaceCrawler.Gameplay.ApplicationRoot.SaveDirectoryOverride;
+            SpaceCrawler.Gameplay.ApplicationRoot.SaveDirectoryOverride = System.IO.Path.GetFullPath(System.IO.Path.Combine(
+                "Logs", "Validation", "Saves", "PlayData", System.Guid.NewGuid().ToString("N")));
+#endif
             previousBackgroundBehavior = InputSystem.settings.backgroundBehavior;
             // Editor focus events otherwise disable newly added synthetic devices as well.
             // Gameplay pause/focus behavior is still exercised through HandleFocus in tests.
@@ -33,6 +41,9 @@ namespace SpaceCrawler.Tests.PlayMode
             foreach (var device in temporarilyDisabled) if (device.added) InputSystem.EnableDevice(device);
             temporarilyDisabled.Clear();
             InputSystem.settings.backgroundBehavior = previousBackgroundBehavior;
+#if UNITY_EDITOR
+            SpaceCrawler.Gameplay.ApplicationRoot.SaveDirectoryOverride = previousSaveDirectory;
+#endif
         }
     }
 }

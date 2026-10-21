@@ -8,12 +8,15 @@ namespace SpaceCrawler.Gameplay
 
     [Serializable] public sealed class RunSessionDescriptor
     {
-        public int protocol = 2, generationVersion, currentRoom, destination, state;
+        public int protocol = 3, generationVersion, currentRoom, destination, state;
+        public int level = 1, sequenceVersion;
+        public bool levels;
+        public string runSeed;
         public uint epoch;
         public string seed, fingerprint, weapon;
     }
     [Serializable] public sealed class RoomLoadAcknowledgment
-    { public uint epoch; public int room; public string fingerprint; }
+    { public uint epoch; public int room, level; public string fingerprint; }
 
     public struct PlayerInputMessage : INetworkSerializeByMemcpy
     {
@@ -27,7 +30,7 @@ namespace SpaceCrawler.Gameplay
     {
         public uint Epoch;
         public ulong Tick;
-        public int CurrentRoom, State, RoomsEntered, LeftReady, RightReady;
+        public int CurrentRoom, State, RoomsEntered, LeftReady, RightReady, Level;
         public bool Running;
     }
     public struct PlayerStateSnapshot : INetworkSerializeByMemcpy

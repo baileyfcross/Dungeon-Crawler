@@ -18,7 +18,7 @@ namespace SpaceCrawler.Gameplay
         public RunProgression Progression { get; private set; }
         public event Action RoomChanged;
 
-        public void Bind(GameplaySession gameplaySession, ApplicationFlow applicationFlow, RunGenerationDefinition definitions)
+        public void Bind(GameplaySession gameplaySession, ApplicationFlow applicationFlow, RunGenerationDefinition definitions, RunCheckpoint checkpoint = null)
         {
             if (session != null) throw new InvalidOperationException("Room loader is already bound.");
             session = gameplaySession;
@@ -26,7 +26,8 @@ namespace SpaceCrawler.Gameplay
             session.Input.SetRoomAvailable(false);
             session.Motor.Stop();
             InitializeCatalog(session.Run, definitions, false);
-            Progression = new RunProgression(session.Run, session.Simulation.State.Player);
+            Progression = checkpoint == null ? new RunProgression(session.Run, session.Simulation.State.Player)
+                : RunProgression.Restore(session.Run, session.Simulation.State.Player, checkpoint.RoomVisits);
             flow.StateChanged += ApplyApplicationState;
             ApplyApplicationState(flow.State);
             EnterRoom(Progression.CurrentRoomId);
@@ -91,7 +92,9 @@ namespace SpaceCrawler.Gameplay
                 session.Combat.ClearRoom();
                 var node = session.Run.GetRoom(destination);
                 ReplaceRoom(session.Run, destination);
-                CurrentRoom.ConfigureExits(Progression.ConnectionsFrom(destination), Progression.Player, session.Motor.Body, RequestExit);
+                var sourceRoom = CurrentRoom;
+                CurrentRoom.ConfigureExits(Progression.ConnectionsFrom(destination), Progression.Player, session.Motor.Body,
+                    intent => ReferenceEquals(CurrentRoom, sourceRoom) && RequestExit(intent));
                 session.Combat.RegisterRoomTargets(CurrentRoom.Targets);
                 session.Motor.PlaceAt(CurrentRoom.PlayerSpawnAnchor.position);
                 session.Motor.Body.simulated = true;
@@ -99,6 +102,14 @@ namespace SpaceCrawler.Gameplay
                 session.Motor.CaptureState();
                 session.Follower.Follow();
                 if (!Progression.TryCompleteEntry(destination)) throw new InvalidOperationException("Room entry does not match the accepted destination.");
+                if (session.TryAdvanceLevel(Progression))
+                {
+                    Progression = new RunProgression(session.Run, session.Simulation.State.Player);
+                    ApplyApplicationState(flow.State);
+                    EnterRoom(session.Run.StartRoomId);
+                    return;
+                }
+                session.CommitCheckpoint(Progression);
                 session.Input.SetRoomAvailable(true);
                 if (Debug.isDebugBuild)
                     Debug.Log($"[RoomFlow] room={destination} definition={node.DefinitionId} state={Progression.State} choices={Progression.Choices.Count} spawn={session.Motor.Body.position} entered={Progression.RoomsEntered}", this);

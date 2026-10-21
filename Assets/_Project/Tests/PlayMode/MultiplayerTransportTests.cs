@@ -49,7 +49,7 @@ namespace SpaceCrawler.Tests.PlayMode
             var flow = new ApplicationFlow(); flow.TryRequest(ApplicationCommand.Initialize); flow.CompleteLoading(ApplicationState.MainMenu);
             flow.TryRequest(ApplicationCommand.NewGame); flow.CompleteLoading(ApplicationState.Gameplay); return flow;
         }
-        private IEnumerator StartPair(bool blaster = false)
+        private IEnumerator StartPair(bool blaster = false, bool levels = false)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<MultiplayerSession>("Assets/_Project/Prefabs/Gameplay/MultiplayerSession.prefab");
             host = Object.Instantiate(prefab); client = Object.Instantiate(prefab);
@@ -62,7 +62,7 @@ namespace SpaceCrawler.Tests.PlayMode
             }
             host.PollLocalDevices = false; client.PollLocalDevices = false;
             hostFlow = Playing(); clientFlow = Playing(); var endpoint = ++port;
-            host.Bind(SessionRole.Host, hostFlow, port: endpoint, hostSeed: 42);
+            host.Bind(SessionRole.Host, hostFlow, port: endpoint, hostSeed: 42, useLevelSequence: levels);
             // A competing seed argument is deliberately ignored for the client role.
             client.Bind(SessionRole.Client, clientFlow, port: endpoint, hostSeed: 999);
             yield return WaitFor(() => host.RoomReady && client.RoomReady, "two-peer room handshake");
@@ -115,11 +115,54 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(rejected.Reason, Is.Not.Empty);
             Assert.That(host.Authority.BothConnected, Is.False);
 
-            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession2");
+            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession3");
             var accepted = new NetworkManager.ConnectionApprovalResponse();
             host.Network.ConnectionApprovalCallback(request, accepted);
             Assert.That(accepted.Approved, Is.True);
             Assert.That(host.Authority.BothConnected, Is.False, "Approval alone must not assign an authoritative player.");
+        }
+
+        [UnityTest]
+        public IEnumerator SharedLevelBoundariesResetRoomsWithoutReplacingPlayersOrEquipment()
+        {
+            yield return StartPair(levels: true);
+            var originalPlayers = host.Players.ToArray();
+            var weapon = host.Players[0].Combat.Simulation.EquippedWeapon;
+            var lastEpoch = host.Epoch;
+            while (host.LevelNumber < 3 || !host.Progression.IsTerminal)
+            {
+                Assert.That(host.Run.Nodes.Count, Is.InRange(10, 17));
+                var level = host.LevelNumber;
+                var destination = host.Progression.Choices[0].To;
+                var nextLevel = host.Run.GetRoom(destination).IsTerminal && level < 3;
+                var exit = host.Progression.Choices.Count == 1 ? host.Rooms.CurrentRoom.SingleExit : host.Rooms.CurrentRoom.LeftExit;
+                host.Players[0].Motor.PlaceAt(exit.transform.position);
+                host.Players[1].Motor.PlaceAt(exit.transform.position + Vector3.right * .2f);
+                yield return WaitFor(() => host.RoomReady && client.RoomReady && host.Epoch > lastEpoch
+                    && client.Epoch == host.Epoch && client.LevelNumber == (nextLevel ? level + 1 : level)
+                    && client.CurrentRoom.Equals(nextLevel ? new RunRoomId(0) : destination), "shared level/room agreement");
+                lastEpoch = host.Epoch;
+                yield return Frames(3);
+                Assert.That(host.LevelNumber, Is.EqualTo(client.LevelNumber));
+                Assert.That(host.Players, Is.EqualTo(originalPlayers));
+                Assert.That(host.Players[0].Combat.Simulation.EquippedWeapon, Is.SameAs(weapon));
+                Assert.That(host.Fingerprint, Is.EqualTo(client.Fingerprint));
+                CheckRoomAndSpawns();
+                if (nextLevel)
+                {
+                    Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
+                    var rejected = host.Authority.RejectedStale;
+                    SendClient("session.input.v3", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
+                        Sequence = 9999, AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.up });
+                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v3", JsonUtility.ToJson(
+                        new RoomLoadAcknowledgment { epoch = lastEpoch, level = level, room = 0, fingerprint = host.Fingerprint }));
+                    yield return WaitFor(() => host.Authority.RejectedStale > rejected, "prior-level input rejected");
+                    Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1), "Old-level acknowledgment cannot commit entry again.");
+                }
+            }
+            Assert.That(host.LevelNumber, Is.EqualTo(3));
+            Assert.That(host.RoomReady && client.RoomReady, Is.True);
+            Assert.That(host.Progression.Choices, Is.Empty);
         }
 
         [UnityTest]
@@ -158,7 +201,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero)); Assert.That(client.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero));
 
             var before = host.Authority.RejectedOwnership;
-            SendClient("session.input.v2", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
+            SendClient("session.input.v3", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
                 AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.left });
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Authority.RejectedOwnership, Is.EqualTo(before + 1));
@@ -274,11 +317,11 @@ namespace SpaceCrawler.Tests.PlayMode
         {
             yield return StartPair(); var initial = host.CurrentRoom;
             var forged = new RunSessionDescriptor { epoch = host.Epoch + 1, seed = "999", fingerprint = "forged", destination = 10, generationVersion = 1, weapon = "weapon.knife" };
-            SendJson(client.Network, host.Network.LocalClientId, "session.run.v2", JsonUtility.ToJson(forged));
+            SendJson(client.Network, host.Network.LocalClientId, "session.run.v3", JsonUtility.ToJson(forged));
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Run.Seed, Is.EqualTo(42)); Assert.That(host.CurrentRoom, Is.EqualTo(initial)); Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
             // Fault injection from the real server transport, deliberately corrupting graph agreement.
-            SendJson(host.Network, client.Network.LocalClientId, "session.run.v2", JsonUtility.ToJson(forged));
+            SendJson(host.Network, client.Network.LocalClientId, "session.run.v3", JsonUtility.ToJson(forged));
             yield return WaitFor(() => client.Failure != null, "mismatching descriptor rejection");
             Assert.That(client.Failure, Does.Contain("mismatch")); Assert.That(client.Run.Seed, Is.EqualTo(42));
         }

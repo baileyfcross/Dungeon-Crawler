@@ -27,6 +27,34 @@ namespace SpaceCrawler.Core
         public int RoomsEntered { get; private set; }
         public string Failure { get; private set; }
         public IReadOnlyList<RoomConnection> Choices { get; private set; }
+        private readonly List<RunRoomId> visits = new List<RunRoomId>();
+        private bool restoring;
+        public IReadOnlyList<RunRoomId> VisitedRooms => visits.AsReadOnly();
+
+        public static void ValidateRoute(DungeonGraph graph, IReadOnlyList<RunRoomId> history)
+        {
+            if (history == null || history.Count == 0 || history.Count > graph.Nodes.Count || !history[0].Equals(graph.StartRoomId))
+                throw new ArgumentException("Saved room history has an invalid start or length.");
+            for (var i = 0; i < history.Count; i++)
+            {
+                graph.GetRoom(history[i]);
+                if (i == 0) continue;
+                var connected = false;
+                foreach (var edge in graph.Connections)
+                    if (edge.From.Equals(history[i - 1]) && edge.To.Equals(history[i])) { connected = true; break; }
+                if (!connected) throw new ArgumentException("Saved room history contains an invalid exit.");
+            }
+        }
+
+        public static RunProgression Restore(DungeonGraph graph, PlayerIdentity player, IReadOnlyList<RunRoomId> history)
+        {
+            ValidateRoute(graph, history);
+            var result = new RunProgression(graph, player) { CurrentRoomId = history[history.Count - 1], restoring = true };
+            for (var i = 0; i < history.Count - 1; i++) result.visits.Add(history[i]);
+            result.RoomsEntered = result.visits.Count;
+            result.Choices = result.ConnectionsFrom(result.CurrentRoomId);
+            return result;
+        }
 
         public RunProgression(DungeonGraph graph, PlayerIdentity player)
         {
@@ -77,11 +105,12 @@ namespace SpaceCrawler.Core
             {
                 if (!GameplayActive || !AcceptedDestination.Value.Equals(room)) return false;
             }
-            else if (RoomsEntered != 0 || !CurrentRoomId.Equals(room)) return false;
+            else if ((!restoring && RoomsEntered != 0) || !CurrentRoomId.Equals(room)) return false;
             CurrentRoomId = room;
             AcceptedDestination = null;
             Choices = ConnectionsFrom(room);
             RoomsEntered++;
+            visits.Add(room); restoring = false;
             State = IsTerminal ? RoomFlowState.Terminal : RoomFlowState.Playing;
             return true;
         }

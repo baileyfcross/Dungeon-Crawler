@@ -25,13 +25,14 @@ namespace SpaceCrawler.Tests.PlayMode
                 Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo("MainMenu"));
                 AssertSingleRootAndScreen(root);
                 var menu = root.CurrentScreen;
-                foreach (var name in new[] { "continue", "load-game", "options" })
+                foreach (var name in new[] { "load-game", "options" })
                 {
                     var unavailable = menu.View.Q<Button>(name);
                     Assert.That(unavailable, Is.Not.Null, name);
                     Assert.That(unavailable.enabledInHierarchy, Is.False, name);
                 }
                 Assert.That(menu.View.Q<Button>("exit").enabledInHierarchy, Is.True);
+                Assert.That(menu.View.Q<Button>("continue").enabledInHierarchy, Is.EqualTo(root.Flow.ContinueAvailable));
 
                 Submit(menu.View.Q<Button>("new-game"));
                 Assert.That(root.Flow.State, Is.EqualTo(ApplicationState.Loading));

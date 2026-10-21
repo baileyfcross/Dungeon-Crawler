@@ -80,15 +80,21 @@ namespace SpaceCrawler.Tests.PlayMode
             VerifyCurrentRoom();
             var readout = root.CurrentScreen.View.Q<Label>("run-readout").text;
             Assert.That(readout, Does.Contain("room-000").And.Contain("room.starting").And.Contain(session.Run.Seed.ToString()));
-            while (!Rooms.Progression.IsTerminal)
+            while (session.LevelNumber < RunSequence.LevelCount || !Rooms.Progression.IsTerminal)
             {
                 yield return Frames(3);
+                var level = session.LevelNumber;
+                Assert.That(session.Run.Nodes.Count, Is.InRange(10, 17));
                 var destination = Rooms.Progression.Choices[0].To;
+                var nextLevel = session.Run.GetRoom(destination).IsTerminal && level < RunSequence.LevelCount;
                 var exit = Rooms.Progression.Choices.Count == 1 ? Rooms.CurrentRoom.SingleExit : Rooms.CurrentRoom.LeftExit;
                 session.Motor.PlaceAt(exit.transform.position);
-                yield return WaitFor(() => Rooms.Progression.CurrentRoomId.Equals(destination));
+                yield return WaitFor(() => nextLevel ? session.LevelNumber == level + 1 && Rooms.Progression.CurrentRoomId.Value == 0
+                    : Rooms.Progression.CurrentRoomId.Equals(destination));
+                Assert.That(session.LevelNumber, Is.EqualTo(nextLevel ? level + 1 : level));
                 VerifyCurrentRoom();
             }
+            Assert.That(session.LevelNumber, Is.EqualTo(3));
             Assert.That(root.CurrentScreen.View.Q<Label>("run-readout").text,
                 Does.Contain("Terminal room reached").And.Contain("No forward exits").And.Not.Contain("has been defined"));
             Assert.That(root.Flow.State, Is.EqualTo(ApplicationState.Gameplay));

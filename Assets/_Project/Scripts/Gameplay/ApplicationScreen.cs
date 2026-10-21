@@ -23,6 +23,23 @@ namespace SpaceCrawler.Gameplay
         private MultiplayerSession multiplayer;
         private Action<SessionRole> startMultiplayerSession;
         private Button host, join;
+        private Button continueGame;
+        private Action requestContinue;
+
+        public void BindContinue(Action request)
+        {
+            requestContinue = request; continueGame = View.Q<Button>("continue");
+            if (continueGame != null) continueGame.clicked += RequestContinue;
+        }
+        private void RequestContinue() => requestContinue?.Invoke();
+        public void UpdateContinue(RunCheckpoint checkpoint)
+        {
+            if (continueGame == null) return;
+            continueGame.SetEnabled(checkpoint != null && flow.CanRequest(ApplicationCommand.Continue));
+            continueGame.text = checkpoint == null ? "Continue  /  No valid save" : $"Continue  /  Level {checkpoint.LevelNumber}  /  {(checkpoint.Mode == SavedSessionMode.Solo ? "Solo" : "Co-op")}";
+            continueGame.tooltip = checkpoint == null ? "No compatible checkpoint is available." : "Restore the saved room entry.";
+        }
+        public void ShowSaveStatus(string message) { if (status != null && !string.IsNullOrEmpty(message)) status.text = message; }
 
         public VisualElement View => document.rootVisualElement;
 
@@ -55,7 +72,7 @@ namespace SpaceCrawler.Gameplay
             var progression = session.Rooms.Progression;
             var node = session.Run.GetRoom(progression.CurrentRoomId);
             var text = new StringBuilder();
-            text.AppendLine($"{node.Id}  /  {node.Category}  /  {node.DefinitionId}  /  {progression.State}");
+            text.AppendLine($"Level {session.LevelNumber} / {RunSequence.LevelCount}  /  {node.Id}  /  {node.Category}  /  {node.DefinitionId}  /  {progression.State}");
             text.Append($"Seed {session.Run.Seed}  /  Generation v{session.Run.GenerationVersion}  /  Rooms entered {progression.RoomsEntered}");
             for (var i = 0; i < progression.Choices.Count; i++)
             {
@@ -116,8 +133,7 @@ namespace SpaceCrawler.Gameplay
             if (resume != null) resume.clicked += RequestResume;
             if (pauseReturn != null) pauseReturn.clicked += RequestReturn;
 
-            SetUnavailable("continue", "Unavailable: no save system or valid save exists yet.");
-            SetUnavailable("load-game", "No saved game available.");
+            SetUnavailable("load-game", "Manual save selection is unavailable. Use Continue for the saved run.");
             SetUnavailable("options", "Options unavailable.");
             flow.StateChanged += Render;
             Render(flow.State);
@@ -140,6 +156,7 @@ namespace SpaceCrawler.Gameplay
         private void Render(ApplicationState state)
         {
             newGame?.SetEnabled(flow.CanRequest(ApplicationCommand.NewGame));
+            continueGame?.SetEnabled(flow.CanRequest(ApplicationCommand.Continue));
             host?.SetEnabled(flow.CanRequest(ApplicationCommand.NewGame)); join?.SetEnabled(flow.CanRequest(ApplicationCommand.NewGame));
             returnToMenu?.SetEnabled(flow.CanRequest(ApplicationCommand.ReturnToMainMenu));
             exit?.SetEnabled(flow.CanRequest(ApplicationCommand.Exit));
@@ -168,6 +185,7 @@ namespace SpaceCrawler.Gameplay
             if (join != null) join.clicked -= Join;
             if (flow != null) flow.StateChanged -= Render;
             if (newGame != null) newGame.clicked -= RequestNewGame;
+            if (continueGame != null) continueGame.clicked -= RequestContinue;
             if (returnToMenu != null) returnToMenu.clicked -= RequestReturn;
             if (exit != null) exit.clicked -= RequestExit;
             if (pause != null) pause.clicked -= RequestPause;

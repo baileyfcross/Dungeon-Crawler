@@ -7,6 +7,7 @@ namespace SpaceCrawler.Core
         ReturnToMainMenu,
         Exit,
         Pause,
-        Resume
+        Resume,
+        Continue
     }
 }

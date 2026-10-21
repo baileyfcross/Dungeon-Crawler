@@ -1,0 +1,110 @@
+using System;
+using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+
+namespace SpaceCrawler.Core
+{
+    /// <summary>Bounded, checksummed binary format, independent of Unity serialization and live objects.</summary>
+    public static class RunCheckpointCodec
+    {
+        private const int Magic = 0x53435253;
+        public const int MaximumFileBytes = 65536;
+
+        public static byte[] Encode(RunCheckpoint checkpoint)
+        {
+            if (checkpoint == null) throw new ArgumentNullException(nameof(checkpoint));
+            byte[] payload;
+            using (var stream = new MemoryStream())
+            {
+                using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
+                {
+                    writer.Write(checkpoint.Seed); writer.Write(checkpoint.GenerationVersion); writer.Write(checkpoint.Fingerprint);
+                    writer.Write((int)checkpoint.Mode); writer.Write((int)checkpoint.Status); writer.Write(checkpoint.CurrentRoom.Value);
+                    writer.Write(checkpoint.RoomVisits.Count);
+                    foreach (var room in checkpoint.RoomVisits) writer.Write(room.Value);
+                    writer.Write(checkpoint.EquipmentIds.Count);
+                    foreach (var equipment in checkpoint.EquipmentIds) writer.Write(equipment);
+                    writer.Write(checkpoint.RunSeed); writer.Write(checkpoint.SequenceVersion); writer.Write(checkpoint.LevelNumber);
+                    writer.Write(checkpoint.LevelSeeds.Count);
+                    for (var i = 0; i < checkpoint.LevelSeeds.Count; i++) { writer.Write(checkpoint.LevelSeeds[i]); writer.Write(checkpoint.LevelFingerprints[i]); }
+                    writer.Write(checkpoint.CompletedRoutes.Count);
+                    foreach (var route in checkpoint.CompletedRoutes)
+                    { writer.Write(route.Count); foreach (var room in route) writer.Write(room.Value); }
+                }
+                payload = stream.ToArray();
+            }
+            using (var stream = new MemoryStream())
+            using (var writer = new BinaryWriter(stream))
+            using (var hash = SHA256.Create())
+            {
+                writer.Write(Magic); writer.Write(RunCheckpoint.SchemaVersion); writer.Write(payload.Length);
+                writer.Write(payload); writer.Write(hash.ComputeHash(payload));
+                if (stream.Length > MaximumFileBytes) throw new InvalidDataException("Saved run exceeds the supported size.");
+                return stream.ToArray();
+            }
+        }
+
+        public static RunCheckpoint Decode(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length < 44 || bytes.Length > MaximumFileBytes)
+                throw new InvalidDataException("Saved run has an invalid size.");
+            using (var stream = new MemoryStream(bytes, false))
+            using (var reader = new BinaryReader(stream, Encoding.UTF8))
+            {
+                if (reader.ReadInt32() != Magic) throw new InvalidDataException("Saved run format is not recognized.");
+                if (reader.ReadInt32() != RunCheckpoint.SchemaVersion) throw new NotSupportedException("Saved run version is not supported.");
+                var length = reader.ReadInt32();
+                if (length < 0 || length != bytes.Length - 44) throw new InvalidDataException("Saved run is incomplete.");
+                var payload = reader.ReadBytes(length);
+                var recordedHash = reader.ReadBytes(32);
+                using (var hash = SHA256.Create())
+                {
+                    var actualHash = hash.ComputeHash(payload);
+                    var difference = 0;
+                    for (var i = 0; i < actualHash.Length; i++) difference |= actualHash[i] ^ recordedHash[i];
+                    if (difference != 0) throw new InvalidDataException("Saved run integrity check failed.");
+                }
+                return ReadPayload(payload);
+            }
+        }
+
+        private static RunCheckpoint ReadPayload(byte[] bytes)
+        {
+            using (var stream = new MemoryStream(bytes, false))
+            using (var reader = new BinaryReader(stream, Encoding.UTF8))
+            {
+                var seed = reader.ReadUInt64(); var generation = reader.ReadInt32(); var fingerprint = reader.ReadString();
+                var mode = (SavedSessionMode)reader.ReadInt32(); var status = (SavedRunStatus)reader.ReadInt32();
+                if (status != SavedRunStatus.Active) throw new NotSupportedException("Saved run status is not supported.");
+                var current = new RunRoomId(reader.ReadInt32());
+                var count = reader.ReadInt32();
+                if (count < 1 || count > 4096) throw new InvalidDataException("Saved room history is invalid.");
+                var visits = new RunRoomId[count];
+                for (var i = 0; i < visits.Length; i++) visits[i] = new RunRoomId(reader.ReadInt32());
+                var players = reader.ReadInt32();
+                if (players < 1 || players > 2) throw new InvalidDataException("Saved player slots are invalid.");
+                var equipment = new string[players];
+                for (var i = 0; i < equipment.Length; i++) equipment[i] = reader.ReadString();
+                var runSeed = reader.ReadUInt64(); var sequenceVersion = reader.ReadInt32(); var level = reader.ReadInt32();
+                var levels = reader.ReadInt32();
+                if (levels < 1 || levels > 3) throw new InvalidDataException("Saved level count is invalid.");
+                var seeds = new ulong[levels]; var fingerprints = new string[levels];
+                for (var i = 0; i < levels; i++) { seeds[i] = reader.ReadUInt64(); fingerprints[i] = reader.ReadString(); }
+                var completed = reader.ReadInt32();
+                if (completed < 0 || completed > 2) throw new InvalidDataException("Saved completed levels are invalid.");
+                var routes = new System.Collections.Generic.IReadOnlyList<RunRoomId>[completed];
+                for (var i = 0; i < completed; i++)
+                {
+                    var rooms = reader.ReadInt32();
+                    if (rooms < 1 || rooms > 4096) throw new InvalidDataException("Saved completed history is invalid.");
+                    var route = new RunRoomId[rooms]; for (var j = 0; j < rooms; j++) route[j] = new RunRoomId(reader.ReadInt32());
+                    routes[i] = route;
+                }
+                if (stream.Position != stream.Length) throw new InvalidDataException("Saved run contains unexpected data.");
+                return new RunCheckpoint(seed, generation, fingerprint, mode, current, visits, equipment,
+                    runSeed, sequenceVersion, level, seeds, fingerprints, routes);
+            }
+        }
+    }
+}

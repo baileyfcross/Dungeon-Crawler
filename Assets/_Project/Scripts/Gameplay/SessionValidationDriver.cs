@@ -39,8 +39,8 @@ namespace SpaceCrawler.Gameplay
         }
         private IEnumerator Walk(float x, float y)
         {
-            var room = session.CurrentRoom; var deadline = Time.realtimeSinceStartupAsDouble + 15;
-            while (session.CurrentRoom.Equals(room))
+            var room = session.CurrentRoom; var level = session.LevelNumber; var deadline = Time.realtimeSinceStartupAsDouble + 15;
+            while (session.LevelNumber == level && session.CurrentRoom.Equals(room))
             {
                 if (Time.realtimeSinceStartupAsDouble > deadline) { Check(false, "movement timed out"); yield break; }
                 var delta = new CoreVector(x, y) - Position;
@@ -71,6 +71,8 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             yield return Until(() => session.RoomReady, "initial room handshake");
+            if (SessionDiagnostics.Option("--session-validation") == "resume")
+                Check(session.LevelNumber == 2 && session.CurrentRoom.Value != 0, "cooperative checkpoint restored on both peers");
             Local.Input.HandleFocus(true); flow.TryRequest(ApplicationCommand.Resume); began = Time.realtimeSinceStartupAsDouble;
             yield return new WaitForSeconds(.15f);
             CheckSpawns(); Record("01-joined-distinct-spawns-and-graph");
@@ -108,36 +110,46 @@ namespace SpaceCrawler.Gameplay
             Record("05-client-focus-loss-is-local");
             if (!Host) { Local.Input.HandleFocus(true); flow.TryRequest(ApplicationCommand.Resume); }
             yield return At(5);
-            yield return Walk(Host ? -6 : 6, 13);
-            yield return At(9);
-            Check(session.CurrentRoom.Value == 0, "different exits cannot transition");
-            if (Host) Check(session.Readiness.Count(session.Progression.Choices[0].To) == 1 && session.Readiness.Count(session.Progression.Choices[1].To) == 1, "one player at each physical exit");
-            Record("06-different-exits-no-transition");
-            if (!Host)
+            var testedSplit = false;
+            var entries = Host ? session.Progression.RoomsEntered : 1;
+            var transitions = 0;
+            while (session.LevelNumber < RunSequence.LevelCount || !session.Run.GetRoom(session.CurrentRoom).IsTerminal)
             {
-                yield return Walk(6, 11); Record("07-left-right-exit-cleared");
-                yield return Walk(-6, 11); yield return Walk(-6, 13);
-            }
-            yield return Until(() => session.CurrentRoom.Value == 1 && session.RoomReady, "both ready at left enter exactly one destination");
-            yield return new WaitForSeconds(.15f); CheckSpawns();
-            Check(session.Rooms.RoomContainer.childCount == 1, "one active room container child");
-            Check(Host ? session.Players.Sum(p => p.Combat.Projectiles.Count) == 0 : session.ReplicaProjectileCount == 0, "room projectiles cleaned");
-            Record("08-six-proofs-passed-shared-left-transition");
-            yield return new WaitForSeconds(.4f);
-            var entries = 2;
-            while (!session.Run.GetRoom(session.CurrentRoom).IsTerminal)
-            {
-                var before = session.CurrentRoom;
+                Check(++transitions <= 60, "bounded three-level route");
+                var before = session.CurrentRoom; var level = session.LevelNumber;
+                Check(session.Run.Nodes.Count >= 10 && session.Run.Nodes.Count <= 17, "total room bounds");
                 var choices = session.Run.Connections.Where(c => c.From.Equals(before)).ToArray();
                 var index = before.Value % choices.Length; var destination = choices[index].To;
-                yield return Walk(choices.Length == 1 ? 0 : index == 0 ? -6 : 6, 13);
-                yield return Until(() => session.CurrentRoom.Equals(destination) && session.RoomReady, "shared forward transition");
-                yield return new WaitForSeconds(.15f); CheckSpawns(); entries++;
+                var advances = level < 3 && session.Run.GetRoom(destination).IsTerminal;
+                if (!testedSplit && choices.Length == 2)
+                {
+                    yield return Walk(Host ? -6 : 6, 13);
+                    yield return Until(() => session.Players[0].State.Position.X < -5.7f && session.Players[0].State.Position.Y > 12.7f
+                        && session.Players[1].State.Position.X > 5.7f && session.Players[1].State.Position.Y > 12.7f, "different physical exits reached");
+                    yield return new WaitForSeconds(.3f);
+                    Check(session.LevelNumber == level && session.CurrentRoom.Equals(before), "different exits cannot transition");
+                    Record("06-different-exits-no-transition");
+                    index = 0; destination = choices[0].To; testedSplit = true;
+                    if (!Host) { yield return Walk(6, 11); yield return Walk(-6, 11); yield return Walk(-6, 13); }
+                }
+                else yield return Walk(choices.Length == 1 ? 0 : index == 0 ? -6 : 6, 13);
+                yield return Until(() => session.LevelNumber == (advances ? level + 1 : level)
+                    && session.CurrentRoom.Equals(advances ? new RunRoomId(0) : destination) && session.RoomReady, "shared forward level/room transition");
+                yield return new WaitForSeconds(.15f); CheckSpawns();
+                entries = advances ? 1 : entries + 1;
                 if (Host) Check(session.Progression.RoomsEntered == entries, "exactly one Core entry commitment");
                 Check(session.Rooms.RoomContainer.childCount == 1, "old room cleanup");
-                Record("09-route-room-" + session.CurrentRoom.Value);
-                yield return new WaitForSeconds(.4f);
+                Check(Host ? session.Players.Sum(p => p.Combat.Projectiles.Count) == 0 : session.ReplicaProjectileCount == 0, "room projectiles cleaned");
+                if (advances) Record("LEVEL-BOUNDARY-PASS-" + session.LevelNumber);
+                Record("09-route-level-" + session.LevelNumber + "-room-" + session.CurrentRoom.Value);
+                if (SessionDiagnostics.Option("--session-validation") == "checkpoint" && session.LevelNumber == 2 && session.CurrentRoom.Value != 0)
+                {
+                    Record("CHECKPOINT-PASS");
+                    while (true) yield return null; // Harness terminates both processes to test durable restoration.
+                }
+                yield return new WaitForSeconds(.25f);
             }
+            Check(testedSplit, "split readiness exercised");
             Check(!new[] { session.Rooms.CurrentRoom.SingleExit, session.Rooms.CurrentRoom.LeftExit, session.Rooms.CurrentRoom.RightExit }.Any(e => e.gameObject.activeSelf), "Terminal has no exits");
             Aim(CoreVector.UnitY); Attack(); Move(Host ? -CoreVector.UnitX : CoreVector.UnitX);
             yield return new WaitForSeconds(.25f); Move(CoreVector.Zero);
