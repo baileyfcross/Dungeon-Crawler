@@ -1,6 +1,7 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
 using System.Collections;
+using System.Linq;
 using SpaceCrawler.Core;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -24,6 +25,7 @@ namespace SpaceCrawler.Gameplay
         {
             yield return Until(() => root.Flow.State == ApplicationState.MainMenu);
             var mode = SessionDiagnostics.Option("--save-validation");
+            if (mode == "melee-prepare" || mode == "melee-resume" || mode == "melee-loss") { yield return RunMelee(mode); yield break; }
             if (mode == "health-profile")
             {
                 Check(root.Profile.Experience == 15 && root.Flow.ContinueAvailable, "permanent XP survives process restart with a fresh unfinished run");
@@ -84,6 +86,62 @@ namespace SpaceCrawler.Gameplay
             var button = root.CurrentScreen.View.Q<Button>(name); Check(button != null && button.enabledInHierarchy, name + " available");
             using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); }
         }
+        private IEnumerator RunMelee(string mode)
+        {
+            var saved = root.SavedCheckpoint;
+            Submit(mode == "melee-resume" ? "continue" : "new-game");
+            yield return Until(() => root.Flow.State == ApplicationState.Gameplay && root.CurrentGameplay != null);
+            var session = root.CurrentGameplay; session.PollLocalDevices = false; session.Input.HandleFocus(true); root.Flow.TryRequest(ApplicationCommand.Resume);
+            if (mode == "melee-resume")
+            {
+                Check(saved != null && session.Rooms.Progression.CurrentRoomId.Equals(saved.CurrentRoom), "saved encounter room restored");
+                Check(session.Life[0].Current == saved.Life.Players[0].Current && session.Life[0].Current < 100, "enemy damage persists through Continue");
+                Check(session.Rooms.CurrentRoom.Encounter.Enemies.Count == 1 && session.Rooms.CurrentRoom.Encounter.Enemies[0].Target.Health.Current == 100, "enemy reset after Continue");
+                Check(session.Life.RunXp == 0 && root.Profile.Experience == 0, "no unintended XP reward");
+                Debug.Log("[SaveValidation] MELEE-RESUME-PASS"); Application.Quit(0); yield break;
+            }
+            var route = SessionValidationDriver.RouteToEngine(session.Run); Check(route != null, "reachable authored Engine encounter");
+            foreach (var edge in route)
+            {
+                var choices = session.Rooms.Progression.Choices; var index = 0;
+                while (index < choices.Count && !choices[index].To.Equals(edge.To)) index++;
+                Check(index < choices.Count, "route follows legal connection");
+                var target = choices.Count == 1 ? session.Rooms.CurrentRoom.SingleExit.transform.position
+                    : index == 0 ? session.Rooms.CurrentRoom.LeftExit.transform.position : session.Rooms.CurrentRoom.RightExit.transform.position;
+                var deadline = Time.realtimeSinceStartupAsDouble + 15;
+                while (session.Rooms.Progression.CurrentRoomId.Equals(edge.From))
+                {
+                    Check(Time.realtimeSinceStartupAsDouble < deadline, "physical encounter traversal");
+                    var delta = target - session.Motor.transform.position;
+                    var direction = Mathf.Abs(delta.x) > .15f ? new System.Numerics.Vector2(Mathf.Sign(delta.x), 0) : System.Numerics.Vector2.UnitY;
+                    session.Simulation.RequestMove(new MoveIntent(new PlayerIdentity(1), direction)); yield return null;
+                }
+                session.Simulation.RequestMove(new MoveIntent(new PlayerIdentity(1), System.Numerics.Vector2.Zero)); yield return null;
+            }
+            var enemy = session.Rooms.CurrentRoom.Encounter.Enemies[0];
+            yield return Until(() => session.Life[0].Current < 100);
+            if (mode == "melee-loss")
+            {
+                yield return Until(() => root.Flow.State == ApplicationState.Death);
+                Submit("death-return-to-menu"); yield return Until(() => root.Flow.State == ApplicationState.MainMenu);
+                Check(!root.Flow.ContinueAvailable && root.Profile.Experience == 0, "real enemy solo loss invalidates Continue without XP");
+                Debug.Log("[SaveValidation] MELEE-LOSS-PASS"); Application.Quit(0); yield break;
+            }
+            var combatDeadline = Time.realtimeSinceStartupAsDouble + 10;
+            while (enemy.Lifecycle == EnemyLifecycle.Alive)
+            {
+                Check(Time.realtimeSinceStartupAsDouble < combatDeadline, "player kills pursuing enemy");
+                var direction = System.Numerics.Vector2.Normalize(new System.Numerics.Vector2(enemy.transform.position.x, enemy.transform.position.y) - session.Simulation.State.Position);
+                session.Simulation.RequestAim(new AimIntent(new PlayerIdentity(1), direction)); session.Combat.RequestAttack(new AttackIntent(new PlayerIdentity(1), direction));
+                yield return new WaitForSeconds(.35f);
+            }
+            Check(enemy.DeathEvents == 1 && session.Life[0].Current > 0 && session.Life.RunXp == 0, "solo fight leaves living player and no kill XP");
+            Check(session.Rooms.Progression.Choices.Count > 0, "exits retain existing availability");
+            Submit("return-to-menu"); yield return Until(() => root.Flow.State == ApplicationState.MainMenu);
+            Check(root.Flow.ContinueAvailable && root.Profile.Experience == 0, "live encounter run can be suspended");
+            Debug.Log("[SaveValidation] MELEE-PREPARE-PASS"); Application.Quit(0);
+        }
+
         private IEnumerator RunHealth(string mode)
         {
             Submit(mode == "health-prepare" ? "new-game" : "continue");

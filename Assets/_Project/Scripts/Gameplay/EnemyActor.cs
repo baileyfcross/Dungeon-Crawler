@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace SpaceCrawler.Gameplay
 {
-    /// <summary>Stationary enemy presentation/authority adapter. Clients never create a simulation.</summary>
+    /// <summary>Enemy presentation/authority adapter. Clients never create a simulation or behaviour.</summary>
     public sealed class EnemyActor : MonoBehaviour
     {
         private DamageableTarget target;
@@ -12,12 +12,41 @@ namespace SpaceCrawler.Gameplay
         private uint revision;
         public EnemyIdentity Identity { get; private set; }
         public EnemySimulation Simulation { get; private set; }
+        public MeleeEnemyBehaviour Behaviour { get; private set; }
+        public MeleeEnemyConfiguration Configuration { get; private set; }
+        public EnemyBehaviourState BehaviourState { get; private set; }
+        public Vector2 Facing { get; private set; } = Vector2.right;
+        public float WindupProgress { get; private set; }
+        public long StrikeSequence { get; private set; }
         public EnemyLifecycle Lifecycle { get; private set; }
         public DamageableTarget Target => target;
         public int DeathEvents { get; private set; }
         public int AggroPlayer { get; private set; }
         public uint Revision => revision;
         public event Action Died;
+
+        public void ConfigureMelee(MeleeEnemyDefinition definition)
+        {
+            if (!bound || Configuration != null) throw new InvalidOperationException("Bind an enemy only once before configuring its behaviour.");
+            Configuration = definition.CreateConfiguration();
+            if (Simulation != null) Behaviour = new MeleeEnemyBehaviour(Simulation, Configuration,
+                new System.Numerics.Vector2(transform.position.x, transform.position.y));
+        }
+        public void SynchronizeBehaviour()
+        {
+            if (Behaviour == null) return;
+            BehaviourState = Behaviour.State; Facing = new Vector2(Behaviour.Facing.X, Behaviour.Facing.Y); WindupProgress = Behaviour.WindupProgress;
+            StrikeSequence = Behaviour.StrikeSequence;
+        }
+        public void ApplyBehaviourSnapshot(int state, Vector2 facing, float progress, long strikeSequence)
+        {
+            if (Simulation != null || state < 0 || state > (int)EnemyBehaviourState.Dead || float.IsNaN(facing.sqrMagnitude)
+                || float.IsInfinity(facing.sqrMagnitude) || Mathf.Abs(facing.sqrMagnitude - 1) > .01f
+                || float.IsNaN(progress) || float.IsInfinity(progress) || progress < 0 || progress > 1 || strikeSequence < StrikeSequence)
+                throw new InvalidOperationException("Invalid enemy behaviour snapshot.");
+            BehaviourState = (EnemyBehaviourState)state; Facing = facing; WindupProgress = progress;
+            StrikeSequence = strikeSequence;
+        }
 
         public void Bind(DamageableTarget damageable, EnemyIdentity identity, bool authoritative)
         {

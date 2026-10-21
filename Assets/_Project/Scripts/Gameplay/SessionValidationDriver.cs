@@ -1,6 +1,7 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using SpaceCrawler.Core;
 using UnityEngine;
@@ -85,6 +86,8 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             yield return Until(() => session.RoomReady, "initial room handshake");
+            if (SessionDiagnostics.Option("--session-validation") == "melee")
+            { yield return RunMelee(); yield break; }
             if (SessionDiagnostics.Option("--session-validation") == "enemies")
             { yield return RunEnemies(); yield break; }
             var mode = SessionDiagnostics.Option("--session-validation");
@@ -224,6 +227,58 @@ namespace SpaceCrawler.Gameplay
             if (Host) yield return Until(() => profile.PendingFor(session.Life.Capture().Profiles[1]).Count == 0, "peer reward acknowledged");
             Record("HEALTH-PASS");
             if (!Host) { yield return new WaitForSeconds(1); Application.Quit(0); }
+        }
+
+        private IEnumerator RunMelee()
+        {
+            Local.Input.HandleFocus(true); flow.TryRequest(ApplicationCommand.Resume);
+            var route = RouteToEngine(session.Run);
+            Check(route != null, "a reachable authored Engine encounter exists");
+            foreach (var edge in route)
+            {
+                var choices = session.Run.Connections.Where(connection => connection.From.Equals(edge.From)).ToArray();
+                var index = Array.FindIndex(choices, connection => connection.To.Equals(edge.To));
+                yield return Walk(choices.Length == 1 ? 0 : index == 0 ? -6 : 6, 13);
+                yield return Until(() => session.CurrentRoom.Equals(edge.To) && session.RoomReady, "physical traversal to authored encounter");
+            }
+            var enemy = session.Rooms.CurrentRoom.Encounter.Enemies[0]; var start = enemy.transform.position;
+            Check(enemy.Configuration != null && (Host ? enemy.Behaviour != null : enemy.Behaviour == null && enemy.Simulation == null), "melee authority boundary");
+            yield return Until(() => Vector3.Distance(start, enemy.transform.position) > .5f, "moving enemy replicated");
+            yield return Until(() => enemy.BehaviourState == EnemyBehaviourState.Windup && enemy.WindupProgress > .05f, "readable windup on each peer");
+            Record("MELEE-WINDUP-PASS");
+            yield return Until(() => session.Vitals(0).Current + session.Vitals(1).Current < 200, "real enemy damage replicated to player health");
+            Record("MELEE-DAMAGE-PASS");
+            var deadline = Time.realtimeSinceStartupAsDouble + 12;
+            while (enemy.Lifecycle == EnemyLifecycle.Alive)
+            {
+                Check(Time.realtimeSinceStartupAsDouble < deadline, "kill enemy using equipped weapon");
+                Aim(new CoreVector(enemy.transform.position.x, enemy.transform.position.y) - Position); Attack();
+                yield return new WaitForSeconds(.35f);
+            }
+            Check(enemy.Lifecycle == EnemyLifecycle.Dead && enemy.DeathEvents == 1 && session.RunXp == 0, "one replicated death without XP rewards");
+            Record("MELEE-DEATH-PASS");
+            var before = session.CurrentRoom; var oldModel = enemy.Simulation;
+            var exits = session.Run.Connections.Where(edge => edge.From.Equals(before)).ToArray();
+            yield return Walk(exits.Length == 1 ? 0 : -6, 13);
+            yield return Until(() => !session.CurrentRoom.Equals(before) && session.RoomReady, "shared transition and enemy cleanup");
+            Check(!Host || oldModel.Lifecycle == EnemyLifecycle.Despawned, "old encounter retired");
+            Check(session.Rooms.RoomContainer.childCount == 1 && session.RunXp == 0, "one room and no unintended XP");
+            Record("MELEE-PASS");
+            if (!Host) { yield return new WaitForSeconds(1); Application.Quit(0); }
+        }
+
+        public static List<RoomConnection> RouteToEngine(DungeonGraph graph)
+        {
+            var queue = new Queue<List<RoomConnection>>(); queue.Enqueue(new List<RoomConnection>());
+            List<RoomConnection> route = null;
+            while (queue.Count > 0)
+            {
+                var path = queue.Dequeue(); var node = path.Count == 0 ? graph.StartRoomId : path[path.Count - 1].To;
+                if (graph.GetRoom(node).Category == RoomCategory.Engine && !graph.GetRoom(node).IsTerminal) { route = path; break; }
+                foreach (var edge in graph.Connections.Where(edge => edge.From.Equals(node)))
+                { var next = new List<RoomConnection>(path) { edge }; queue.Enqueue(next); }
+            }
+            return route;
         }
 
         private IEnumerator RunEnemies()

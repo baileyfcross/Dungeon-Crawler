@@ -49,7 +49,7 @@ namespace SpaceCrawler.Tests.PlayMode
             var flow = new ApplicationFlow(); flow.TryRequest(ApplicationCommand.Initialize); flow.CompleteLoading(ApplicationState.MainMenu);
             flow.TryRequest(ApplicationCommand.NewGame); flow.CompleteLoading(ApplicationState.Gameplay); return flow;
         }
-        private IEnumerator StartPair(bool blaster = false, bool levels = false, int enemies = 0)
+        private IEnumerator StartPair(bool blaster = false, bool levels = false, int enemies = 0, bool melee = false)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<MultiplayerSession>("Assets/_Project/Prefabs/Gameplay/MultiplayerSession.prefab");
             host = Object.Instantiate(prefab); client = Object.Instantiate(prefab);
@@ -64,9 +64,13 @@ namespace SpaceCrawler.Tests.PlayMode
             host.PollLocalDevices = false; client.PollLocalDevices = false;
             hostFlow = Playing(); clientFlow = Playing(); var endpoint = ++port;
             host.Bind(SessionRole.Host, hostFlow, port: endpoint, hostSeed: 42, useLevelSequence: levels);
+            if (melee) host.Rooms.CurrentRoom.Encounter.Enemies[0].ConfigureMelee(
+                AssetDatabase.LoadAssetAtPath<MeleeEnemyDefinition>("Assets/_Project/Data/Enemies/MeleeEnemy.asset"));
             // A competing seed argument is deliberately ignored for the client role.
             client.Bind(SessionRole.Client, clientFlow, port: endpoint, hostSeed: 999);
             yield return WaitFor(() => host.RoomReady && client.RoomReady, "two-peer room handshake");
+            if (melee) client.Rooms.CurrentRoom.Encounter.Enemies[0].ConfigureMelee(
+                AssetDatabase.LoadAssetAtPath<MeleeEnemyDefinition>("Assets/_Project/Data/Enemies/MeleeEnemy.asset"));
             host.Players[0].Input.HandleFocus(true); client.Players[1].Input.HandleFocus(true);
             hostFlow.TryRequest(ApplicationCommand.Resume); clientFlow.TryRequest(ApplicationCommand.Resume);
             yield return Frames(3);
@@ -120,7 +124,7 @@ namespace SpaceCrawler.Tests.PlayMode
             var oldProtocol = new NetworkManager.ConnectionApprovalResponse();
             host.Network.ConnectionApprovalCallback(request, oldProtocol);
             Assert.That(oldProtocol.Approved, Is.False);
-            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession5");
+            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession6");
             var accepted = new NetworkManager.ConnectionApprovalResponse();
             host.Network.ConnectionApprovalCallback(request, accepted);
             Assert.That(accepted.Approved, Is.True);
@@ -198,9 +202,9 @@ namespace SpaceCrawler.Tests.PlayMode
                 {
                     Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
                     var rejected = host.Authority.RejectedStale;
-                    SendClient("session.input.v5", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
+                    SendClient("session.input.v6", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
                         Sequence = 9999, AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.up });
-                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v5", JsonUtility.ToJson(
+                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v6", JsonUtility.ToJson(
                         new RoomLoadAcknowledgment { epoch = lastEpoch, level = level, room = 0, fingerprint = host.Fingerprint }));
                     yield return WaitFor(() => host.Authority.RejectedStale > rejected, "prior-level input rejected");
                     Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1), "Old-level acknowledgment cannot commit entry again.");
@@ -247,7 +251,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero)); Assert.That(client.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero));
 
             var before = host.Authority.RejectedOwnership;
-            SendClient("session.input.v5", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
+            SendClient("session.input.v6", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
                 AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.left });
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Authority.RejectedOwnership, Is.EqualTo(before + 1));
@@ -363,13 +367,35 @@ namespace SpaceCrawler.Tests.PlayMode
         {
             yield return StartPair(); var initial = host.CurrentRoom;
             var forged = new RunSessionDescriptor { runId = host.Life.RunId.ToString("N"), epoch = host.Epoch + 1, seed = "999", fingerprint = "forged", destination = 10, generationVersion = 1, weapon = "weapon.knife" };
-            SendJson(client.Network, host.Network.LocalClientId, "session.run.v5", JsonUtility.ToJson(forged));
+            SendJson(client.Network, host.Network.LocalClientId, "session.run.v6", JsonUtility.ToJson(forged));
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Run.Seed, Is.EqualTo(42)); Assert.That(host.CurrentRoom, Is.EqualTo(initial)); Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
             // Fault injection from the real server transport, deliberately corrupting graph agreement.
-            SendJson(host.Network, client.Network.LocalClientId, "session.run.v5", JsonUtility.ToJson(forged));
+            SendJson(host.Network, client.Network.LocalClientId, "session.run.v6", JsonUtility.ToJson(forged));
             yield return WaitFor(() => client.Failure != null, "mismatching descriptor rejection");
             Assert.That(client.Failure, Does.Contain("mismatch")); Assert.That(client.Run.Seed, Is.EqualTo(42));
+        }
+
+        [UnityTest]
+        public IEnumerator MeleeEnemyRunsOnlyOnHostAndReplicatesWindupDamageAndDeath()
+        {
+            yield return StartPair(enemies: 1, melee: true);
+            var enemy = host.Rooms.CurrentRoom.Encounter.Enemies[0]; var replica = client.Rooms.CurrentRoom.Encounter.Enemies[0];
+            Assert.That(replica.Behaviour, Is.Null); Assert.That(replica.Simulation, Is.Null);
+            var start = enemy.transform.position;
+            yield return WaitFor(() => Vector3.Distance(enemy.transform.position, start) > 1, "host enemy pursuit");
+            yield return WaitFor(() => replica.BehaviourState == EnemyBehaviourState.Windup && replica.WindupProgress > .05f, "replicated attack windup");
+            Assert.That(Vector2.Distance(enemy.Facing, replica.Facing), Is.LessThan(.01));
+            yield return WaitFor(() => host.Life[0].Current < 100 || host.Life[1].Current < 100, "enemy damage through host life model");
+            yield return WaitFor(() => client.Vitals(0).Current == host.Life[0].Current && client.Vitals(1).Current == host.Life[1].Current, "replicated player health");
+            Assert.That(host.Life[0].Current + host.Life[1].Current, Is.EqualTo(180));
+            var victim = enemy.AggroPlayer;
+            host.DamagePlayer(new PlayerIdentity(victim), Guid.NewGuid(), 100);
+            yield return WaitFor(() => enemy.AggroPlayer == 3 - victim, "downed player excluded from targeting");
+            enemy.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1), 900, enemy.Target.Identity, 100), out _);
+            yield return WaitFor(() => replica.Lifecycle == EnemyLifecycle.Dead, "replicated melee enemy death");
+            Assert.That(replica.DeathEvents, Is.EqualTo(1)); Assert.That(host.RunXp, Is.Zero);
+            Assert.That(host.Failure ?? client.Failure, Is.Null);
         }
 
         private void SendClient(string name, PlayerInputMessage input)

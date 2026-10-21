@@ -93,7 +93,7 @@ namespace SpaceCrawler.Gameplay
                 session.Combat.ClearRoom();
                 var node = session.Run.GetRoom(destination);
                 ReplaceRoom(session.Run, destination);
-                CurrentRoom.InitializeEncounter(true, checked(++encounterIncarnation));
+                CurrentRoom.InitializeEncounter(true, checked(++encounterIncarnation), node.IsTerminal ? Array.Empty<EnemySpawn>() : null);
                 var sourceRoom = CurrentRoom;
                 CurrentRoom.ConfigureExits(Progression.ConnectionsFrom(destination), Progression.Player, session.Motor.Body,
                     intent => ReferenceEquals(CurrentRoom, sourceRoom) && RequestExit(intent));

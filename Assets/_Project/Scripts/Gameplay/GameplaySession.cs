@@ -36,6 +36,7 @@ namespace SpaceCrawler.Gameplay
         private Action<RunEndReceipt> endRun;
         private ApplicationFlow flow;
         private bool runFinished;
+        private EnemyCombatSystem enemies;
         public RunLife Life { get; private set; }
         public string HealthFailure { get; private set; }
         public event Action HealthChanged;
@@ -74,6 +75,8 @@ namespace SpaceCrawler.Gameplay
             // The original isolated control/combat test prefab intentionally has no loader.
             // Normal New Game requires the room-enabled composition in ApplicationRoot.
             if (rooms != null) rooms.Bind(this, flow, generation, checkpoint);
+            if (rooms != null) enemies = new EnemyCombatSystem(transform, _ => motor.Body.position, () => Life,
+                (player, attack, amount) => DamagePlayer(attack, amount));
         }
 
         private static ulong CreateRunSeed()
@@ -123,7 +126,8 @@ namespace SpaceCrawler.Gameplay
             if (Life?.Ended == true && !runFinished) ApplyLife();
             if (PollLocalDevices) input.SampleMovement();
         }
-        private void OnDestroy() { if (Life != null) Life.Changed -= ApplyLife; }
+        private void FixedUpdate() => enemies?.Advance(rooms.CurrentRoom, flow.State == ApplicationState.Gameplay && !Life.Ended, Time.fixedDeltaTime);
+        private void OnDestroy() { enemies?.Dispose(); if (Life != null) Life.Changed -= ApplyLife; }
         private void LateUpdate()
         {
             if (Simulation == null) return;

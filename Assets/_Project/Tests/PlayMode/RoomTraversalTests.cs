@@ -181,7 +181,7 @@ namespace SpaceCrawler.Tests.PlayMode
                     Assert.That(session.Combat.Projectiles, Is.Empty);
                     if (route == 3) Assert.That(oldProjectile == null, Is.True, "Old-room projectile must be destroyed, not carried into new space.");
                     Assert.That(session.Combat.Targets.All(t => t.Health.Current == 100), Is.True);
-                    Assert.That(session.Combat.RegisteredColliderCount, Is.EqualTo(6));
+                    Assert.That(session.Combat.RegisteredColliderCount, Is.EqualTo(Rooms.CurrentRoom.CombatTargets.Sum(target => target.HitColliders.Length)));
                     VerifyCurrentRoom();
                     yield return Frames(3);
                     Assert.That(session.Input.GameplayInputEnabled, Is.True);
@@ -265,6 +265,8 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(Object.FindObjectsByType<AuthoredRoom>(FindObjectsInactive.Include, FindObjectsSortMode.None).Length, Is.EqualTo(1));
             Assert.That(Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None).Length, Is.EqualTo(1));
             var node = session.Run.GetRoom(Rooms.Progression.CurrentRoomId);
+            Assert.That(room.Encounter.Enemies.Count, Is.EqualTo(node.Category == RoomCategory.Engine && !node.IsTerminal ? 1 : 0),
+                "Only nonterminal Engine rooms receive the authored melee encounter.");
             var definition = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"Assets/_Project/Data/Rooms/{node.Category}.asset");
             Assert.That(Rooms.CurrentPrefab, Is.SameAs(definition.RoomPrefab));
             Assert.That(session.Motor.Body.position, Is.EqualTo((Vector2)room.PlayerSpawnAnchor.position));

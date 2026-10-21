@@ -86,7 +86,8 @@ namespace SpaceCrawler.Gameplay
             {
                 if (ignoredOwnerColliders.Contains(collider) || !targetByCollider.TryGetValue(collider, out var target) || !target.Health.IsAlive) continue;
                 var position = target.transform.position;
-                if (!MeleeRules.Contains(execution, new CoreVector(position.x, position.y)) || !hitTargets.Add(target.Identity)) continue;
+                if (!MeleeRules.Contains(execution, new CoreVector(position.x, position.y))
+                    || !RoomNavigation.ClearSight(origin, position) || !hitTargets.Add(target.Identity)) continue;
                 ApplyDamage(execution, target);
             }
         }

@@ -56,6 +56,6 @@ namespace SpaceCrawler.Core
             State = new PlayerState(player, position, velocity, State.AimDirection);
         }
 
-        private static bool IsFinite(Vector2 value) => !float.IsNaN(value.LengthSquared()) && !float.IsInfinity(value.LengthSquared());
+        internal static bool IsFinite(Vector2 value) => !float.IsNaN(value.LengthSquared()) && !float.IsInfinity(value.LengthSquared());
     }
 }

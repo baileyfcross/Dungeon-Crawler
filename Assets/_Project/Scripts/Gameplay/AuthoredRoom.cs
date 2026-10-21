@@ -83,6 +83,7 @@ namespace SpaceCrawler.Gameplay
                 if (enemySpawn == null || enemySpawn.Identity < 1 || enemySpawn.Identity > 32 || !spawnIds.Add(enemySpawn.Identity) || enemySpawn.Prefab == null)
                     throw new InvalidOperationException("Invalid enemy spawn slot.");
                 enemySpawn.Prefab.ValidateEnemyAuthoring();
+                if (enemySpawn.Behaviour != null) enemySpawn.Behaviour.CreateConfiguration();
                 RequireChild(enemySpawn.Anchor);
                 if (!enemySpawn.Anchor.IsChildOf(contentRoot) || !Finite(enemySpawn.Anchor.position)
                     || !safeBounds.Contains(transform.InverseTransformPoint(enemySpawn.Anchor.position)))

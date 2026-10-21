@@ -8,7 +8,7 @@ namespace SpaceCrawler.Gameplay
 
     [Serializable] public sealed class RunSessionDescriptor
     {
-        public int protocol = 5, generationVersion, currentRoom, destination, state;
+        public int protocol = 6, generationVersion, currentRoom, destination, state;
         public string runId;
         public int level = 1, sequenceVersion;
         public bool levels;
@@ -56,6 +56,10 @@ namespace SpaceCrawler.Gameplay
         public uint Encounter, Revision;
         public int Spawn, Current, Maximum, Lifecycle, Aggro;
         public Vector2 Position;
+        public int Behaviour;
+        public Vector2 Facing;
+        public float WindupProgress;
+        public long StrikeSequence;
     }
     public struct ProjectileStateSnapshot : INetworkSerializeByMemcpy
     { public int Owner; public long Sequence; public Vector2 Position; }
