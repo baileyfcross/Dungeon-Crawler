@@ -12,7 +12,8 @@ namespace SpaceCrawler.Gameplay
     {
         [SerializeField] private InputActionAsset actions;
         private InputActionMap playerMap;
-        private InputAction move, aim, pause, attack;
+        private InputAction move, aim, pause, attack, interact;
+        private bool interactNeedsRelease;
         private Vector2Control pointer, stick;
         private bool useStick, movementNeedsNeutral, stickNeedsNeutral;
         private bool focused = true;
@@ -40,6 +41,7 @@ namespace SpaceCrawler.Gameplay
             aim = playerMap.FindAction("Aim", true);
             pause = playerMap.FindAction("Pause", true);
             attack = playerMap.FindAction("Attack", true);
+            interact = playerMap.FindAction("Interact", true);
             aim.performed += ObserveAimDevice;
             flow.StateChanged += ApplyGate;
             ApplyGate(flow.State);
@@ -55,16 +57,18 @@ namespace SpaceCrawler.Gameplay
                 movementNeedsNeutral = true;
                 stickNeedsNeutral = true;
                 attackNeedsRelease = true;
+                interactNeedsRelease = true;
                 move.Enable();
                 aim.Enable();
                 attack.Enable();
+                interact.Enable();
                 foreach (var control in aim.controls)
                 {
                     if (control.device is Pointer && control is Vector2Control position) pointer = position;
                     if (control.device is Gamepad && control is Vector2Control rightStick) stick = rightStick;
                 }
             }
-            else { move.Disable(); aim.Disable(); attack.Disable(); }
+            else { move.Disable(); aim.Disable(); attack.Disable(); interact.Disable(); }
             if (focused && (state == ApplicationState.Gameplay || state == ApplicationState.Paused)) pause.Enable();
             else pause.Disable();
         }
@@ -78,6 +82,8 @@ namespace SpaceCrawler.Gameplay
                 return;
             }
             if (!GameplayInputEnabled || Time.frameCount <= activationFrame) return;
+            if (!interact.IsPressed()) interactNeedsRelease = false;
+            commands.Interact(commands.State.Player, !interactNeedsRelease && interact.IsPressed());
             var direction = move.ReadValue<Vector2>();
             if (movementNeedsNeutral)
             {

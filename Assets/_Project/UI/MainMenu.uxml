@@ -3,7 +3,7 @@
     <ui:VisualElement class="screen">
         <ui:VisualElement class="top-line">
             <ui:Label text="SPACE CRAWLER" class="brand" />
-            <ui:Label text="" class="eyebrow" />
+            <ui:Label name="profile-xp" text="" class="eyebrow" />
         </ui:VisualElement>
         <ui:VisualElement class="content">
             <ui:Label text="MAIN MENU" class="eyebrow accent" />

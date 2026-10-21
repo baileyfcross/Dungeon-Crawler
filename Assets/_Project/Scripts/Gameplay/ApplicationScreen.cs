@@ -25,6 +25,19 @@ namespace SpaceCrawler.Gameplay
         private Button host, join;
         private Button continueGame;
         private Action requestContinue;
+        private Button deathReturn;
+        private VisualElement deathOverlay;
+        private ProgressBar healthBar;
+        private Label healthStatus;
+
+        public void SetProfileAvailable(bool available, string message)
+        {
+            if (available) return;
+            newGame?.SetEnabled(false); host?.SetEnabled(false); join?.SetEnabled(false);
+            ShowSaveStatus(message);
+        }
+        public void ShowProfile(ProfileProgress profile)
+        { var label = View.Q<Label>("profile-xp"); if (label != null) label.text = profile == null ? "Profile unavailable" : $"Profile XP  {profile.Experience}"; }
 
         public void BindContinue(Action request)
         {
@@ -39,7 +52,12 @@ namespace SpaceCrawler.Gameplay
             continueGame.text = checkpoint == null ? "Continue  /  No valid save" : $"Continue  /  Level {checkpoint.LevelNumber}  /  {(checkpoint.Mode == SavedSessionMode.Solo ? "Solo" : "Co-op")}";
             continueGame.tooltip = checkpoint == null ? "No compatible checkpoint is available." : "Restore the saved room entry.";
         }
-        public void ShowSaveStatus(string message) { if (status != null && !string.IsNullOrEmpty(message)) status.text = message; }
+        public void ShowSaveStatus(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return;
+            if (status != null) status.text = message;
+            if (healthStatus != null) healthStatus.text = message;
+        }
 
         public VisualElement View => document.rootVisualElement;
 
@@ -62,7 +80,9 @@ namespace SpaceCrawler.Gameplay
         {
             session = gameplaySession;
             session.Rooms.RoomChanged += ShowRun;
+            session.HealthChanged += ShowHealth;
             ShowRun();
+            ShowHealth();
         }
 
         private void ShowRun()
@@ -109,6 +129,30 @@ namespace SpaceCrawler.Gameplay
             var label = View.Q<Label>("run-readout");
             if (label != null) { label.text = multiplayer.Describe(); label.style.fontSize = 10; }
             ShowWeapon(multiplayer.WeaponName);
+            ShowHealth();
+        }
+
+        private void ShowHealth()
+        {
+            if (healthBar == null) return;
+            if (multiplayer != null && (!multiplayer.RoomReady || multiplayer.Players[0] == null || multiplayer.Players[1] == null))
+            {
+                healthBar.style.display = DisplayStyle.None;
+                if (healthStatus != null) healthStatus.text = "Waiting for the shared run...";
+                return;
+            }
+            healthBar.style.display = DisplayStyle.Flex;
+            var vitals = session != null ? session.Life[0] : multiplayer != null ? multiplayer.Vitals(multiplayer.LocalPlayer - 1) : PlayerVitals.Starting;
+            healthBar.highValue = vitals.Maximum; healthBar.SetValueWithoutNotify(vitals.Current);
+            healthBar.title = $"Health {vitals.Current} / {vitals.Maximum}";
+            if (healthStatus == null) return;
+            var failure = session != null ? session.HealthFailure : multiplayer?.HealthFailure;
+            if (!string.IsNullOrEmpty(failure)) { healthStatus.text = failure; return; }
+            if (multiplayer == null) { healthStatus.text = $"Run XP  {session?.Life.RunXp ?? 0}"; return; }
+            var local = multiplayer.LocalPlayer - 1; var other = 1 - local;
+            var progress = multiplayer.Players[vitals.State == PlayerLifeState.Downed ? other : local].ReviveProgress;
+            healthStatus.text = vitals.State == PlayerLifeState.Downed ? $"Downed — waiting for revival. {progress:F1} / 3 seconds"
+                : multiplayer.Vitals(other).State == PlayerLifeState.Downed ? $"Hold E / gamepad South near your teammate to revive. {progress:F1} / 3 seconds" : string.Empty;
         }
 
         public void Bind(ApplicationFlow applicationFlow)
@@ -126,6 +170,9 @@ namespace SpaceCrawler.Gameplay
             pauseReturn = View.Q<Button>("pause-return-to-menu");
             hud = View.Q("gameplay-hud");
             pauseOverlay = View.Q("pause-overlay");
+            deathOverlay = View.Q("death-overlay"); deathReturn = View.Q<Button>("death-return-to-menu");
+            healthBar = View.Q<ProgressBar>("player-health"); healthStatus = View.Q<Label>("health-status");
+            if (deathReturn != null) deathReturn.clicked += RequestReturn;
             if (newGame != null) newGame.clicked += RequestNewGame;
             if (returnToMenu != null) returnToMenu.clicked += RequestReturn;
             if (exit != null) exit.clicked += RequestExit;
@@ -163,6 +210,8 @@ namespace SpaceCrawler.Gameplay
             pause?.SetEnabled(flow.CanRequest(ApplicationCommand.Pause));
             resume?.SetEnabled(flow.CanRequest(ApplicationCommand.Resume));
             pauseReturn?.SetEnabled(flow.CanRequest(ApplicationCommand.ReturnToMainMenu));
+            deathReturn?.SetEnabled(state == ApplicationState.Death && flow.CanRequest(ApplicationCommand.ReturnToMainMenu));
+            if (deathOverlay != null) deathOverlay.style.display = state == ApplicationState.Death ? DisplayStyle.Flex : DisplayStyle.None;
             if (hud != null) hud.style.display = state == ApplicationState.Gameplay ? DisplayStyle.Flex : DisplayStyle.None;
             if (pauseOverlay != null) pauseOverlay.style.display = state == ApplicationState.Paused ? DisplayStyle.Flex : DisplayStyle.None;
             if (status != null)
@@ -173,6 +222,8 @@ namespace SpaceCrawler.Gameplay
             }
             else if (state == representedState && newGame != null)
                 newGame.schedule.Execute(() => { if (flow.State == representedState) newGame.Focus(); });
+            else if (state == ApplicationState.Death && deathReturn != null)
+                deathReturn.schedule.Execute(() => { if (flow.State == ApplicationState.Death) deathReturn.Focus(); });
             else if (state == ApplicationState.Gameplay)
                 View.focusController?.focusedElement?.Blur();
         }
@@ -180,6 +231,7 @@ namespace SpaceCrawler.Gameplay
         private void OnDestroy()
         {
             if (session != null && session.Rooms != null) session.Rooms.RoomChanged -= ShowRun;
+            if (session != null) session.HealthChanged -= ShowHealth;
             if (multiplayer != null) multiplayer.Changed -= ShowMultiplayer;
             if (host != null) host.clicked -= Host;
             if (join != null) join.clicked -= Join;
@@ -191,6 +243,7 @@ namespace SpaceCrawler.Gameplay
             if (pause != null) pause.clicked -= RequestPause;
             if (resume != null) resume.clicked -= RequestResume;
             if (pauseReturn != null) pauseReturn.clicked -= RequestReturn;
+            if (deathReturn != null) deathReturn.clicked -= RequestReturn;
         }
     }
 }

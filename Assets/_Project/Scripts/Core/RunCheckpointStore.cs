@@ -21,7 +21,13 @@ namespace SpaceCrawler.Core
 
         public CheckpointLoadStatus Load(out RunCheckpoint checkpoint, out string error)
         {
-            lock (sync) return Read(FilePath, out checkpoint, out error);
+            lock (sync)
+            {
+                var status = Read(FilePath, out checkpoint, out error);
+                if (status == CheckpointLoadStatus.Valid && File.Exists(ProfileProgressStore.ReceiptPath(Path.GetDirectoryName(FilePath), checkpoint.Life.RunId)))
+                { checkpoint = null; error = "This run has ended."; return CheckpointLoadStatus.Missing; }
+                return status;
+            }
         }
 
         private static CheckpointLoadStatus Read(string path, out RunCheckpoint checkpoint, out string error)
@@ -59,7 +65,10 @@ namespace SpaceCrawler.Core
                 Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
                 using (var ownership = new FileStream(FilePath + ".lock", FileMode.OpenOrCreate, FileAccess.Write, FileShare.None))
                 {
-                var status = Read(FilePath, out _, out _);
+                if (File.Exists(ProfileProgressStore.ReceiptPath(Path.GetDirectoryName(FilePath), checkpoint.Life.RunId)))
+                    throw new InvalidOperationException("An ended run cannot be saved again.");
+                var status = Read(FilePath, out var previous, out _);
+                if (previous?.SourceSchemaVersion == 2 && !File.Exists(FilePath + ".schema2")) File.Copy(FilePath, FilePath + ".schema2");
                 if (status == CheckpointLoadStatus.Unavailable) throw new IOException("Existing save cannot be accessed safely.");
                 // Keep incompatible/corrupt evidence without replacing a previous valid backup.
                 if (status == CheckpointLoadStatus.Invalid || status == CheckpointLoadStatus.Incompatible)

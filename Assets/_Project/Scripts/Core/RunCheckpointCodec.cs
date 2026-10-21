@@ -31,6 +31,11 @@ namespace SpaceCrawler.Core
                     writer.Write(checkpoint.CompletedRoutes.Count);
                     foreach (var route in checkpoint.CompletedRoutes)
                     { writer.Write(route.Count); foreach (var room in route) writer.Write(room.Value); }
+                    writer.Write(checkpoint.Life.RunId.ToByteArray()); writer.Write(checkpoint.Life.RunXp);
+                    foreach (var player in checkpoint.Life.Players)
+                    { writer.Write(player.Current); writer.Write(player.Maximum); writer.Write((int)player.State); }
+                    for (var i = 0; i < checkpoint.Life.Players.Count; i++)
+                    { writer.Write(checkpoint.Life.Profiles[i].ToByteArray()); writer.Write(checkpoint.Life.Classes[i]); }
                 }
                 payload = stream.ToArray();
             }
@@ -53,7 +58,8 @@ namespace SpaceCrawler.Core
             using (var reader = new BinaryReader(stream, Encoding.UTF8))
             {
                 if (reader.ReadInt32() != Magic) throw new InvalidDataException("Saved run format is not recognized.");
-                if (reader.ReadInt32() != RunCheckpoint.SchemaVersion) throw new NotSupportedException("Saved run version is not supported.");
+                var schema = reader.ReadInt32();
+                if (schema != 2 && schema != RunCheckpoint.SchemaVersion) throw new NotSupportedException("Saved run version is not supported.");
                 var length = reader.ReadInt32();
                 if (length < 0 || length != bytes.Length - 44) throw new InvalidDataException("Saved run is incomplete.");
                 var payload = reader.ReadBytes(length);
@@ -65,11 +71,11 @@ namespace SpaceCrawler.Core
                     for (var i = 0; i < actualHash.Length; i++) difference |= actualHash[i] ^ recordedHash[i];
                     if (difference != 0) throw new InvalidDataException("Saved run integrity check failed.");
                 }
-                return ReadPayload(payload);
+                return ReadPayload(payload, schema);
             }
         }
 
-        private static RunCheckpoint ReadPayload(byte[] bytes)
+        private static RunCheckpoint ReadPayload(byte[] bytes, int schema)
         {
             using (var stream = new MemoryStream(bytes, false))
             using (var reader = new BinaryReader(stream, Encoding.UTF8))
@@ -101,9 +107,27 @@ namespace SpaceCrawler.Core
                     var route = new RunRoomId[rooms]; for (var j = 0; j < rooms; j++) route[j] = new RunRoomId(reader.ReadInt32());
                     routes[i] = route;
                 }
+                RunLifeSnapshot life;
+                if (schema == 2)
+                {
+                    using (var hash = SHA256.Create())
+                    {
+                        var identity = new byte[16]; Array.Copy(hash.ComputeHash(bytes), identity, 16);
+                        var defaults = new PlayerVitals[players]; for (var i = 0; i < players; i++) defaults[i] = PlayerVitals.Starting;
+                        life = new RunLifeSnapshot(new Guid(identity), 0, defaults);
+                    }
+                }
+                else
+                {
+                    var id = new Guid(reader.ReadBytes(16)); var xp = reader.ReadInt64();
+                    var vitals = new PlayerVitals[players]; var profiles = new Guid[players]; var classes = new string[players];
+                    for (var i = 0; i < players; i++) vitals[i] = new PlayerVitals(reader.ReadInt32(), reader.ReadInt32(), (PlayerLifeState)reader.ReadInt32());
+                    for (var i = 0; i < players; i++) { profiles[i] = new Guid(reader.ReadBytes(16)); classes[i] = reader.ReadString(); }
+                    life = new RunLifeSnapshot(id, xp, vitals, profiles, classes);
+                }
                 if (stream.Position != stream.Length) throw new InvalidDataException("Saved run contains unexpected data.");
                 return new RunCheckpoint(seed, generation, fingerprint, mode, current, visits, equipment,
-                    runSeed, sequenceVersion, level, seeds, fingerprints, routes);
+                    runSeed, sequenceVersion, level, seeds, fingerprints, routes, life, schema);
             }
         }
     }

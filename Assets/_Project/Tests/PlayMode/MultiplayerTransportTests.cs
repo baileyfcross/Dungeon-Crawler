@@ -120,7 +120,7 @@ namespace SpaceCrawler.Tests.PlayMode
             var oldProtocol = new NetworkManager.ConnectionApprovalResponse();
             host.Network.ConnectionApprovalCallback(request, oldProtocol);
             Assert.That(oldProtocol.Approved, Is.False);
-            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession4");
+            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession5");
             var accepted = new NetworkManager.ConnectionApprovalResponse();
             host.Network.ConnectionApprovalCallback(request, accepted);
             Assert.That(accepted.Approved, Is.True);
@@ -198,9 +198,9 @@ namespace SpaceCrawler.Tests.PlayMode
                 {
                     Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
                     var rejected = host.Authority.RejectedStale;
-                    SendClient("session.input.v4", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
+                    SendClient("session.input.v5", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
                         Sequence = 9999, AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.up });
-                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v4", JsonUtility.ToJson(
+                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v5", JsonUtility.ToJson(
                         new RoomLoadAcknowledgment { epoch = lastEpoch, level = level, room = 0, fingerprint = host.Fingerprint }));
                     yield return WaitFor(() => host.Authority.RejectedStale > rejected, "prior-level input rejected");
                     Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1), "Old-level acknowledgment cannot commit entry again.");
@@ -247,7 +247,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero)); Assert.That(client.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero));
 
             var before = host.Authority.RejectedOwnership;
-            SendClient("session.input.v4", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
+            SendClient("session.input.v5", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
                 AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.left });
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Authority.RejectedOwnership, Is.EqualTo(before + 1));
@@ -362,12 +362,12 @@ namespace SpaceCrawler.Tests.PlayMode
         public IEnumerator ForgedClientRunMessagesCannotAdvanceHostAndBadGraphStopsClient()
         {
             yield return StartPair(); var initial = host.CurrentRoom;
-            var forged = new RunSessionDescriptor { epoch = host.Epoch + 1, seed = "999", fingerprint = "forged", destination = 10, generationVersion = 1, weapon = "weapon.knife" };
-            SendJson(client.Network, host.Network.LocalClientId, "session.run.v4", JsonUtility.ToJson(forged));
+            var forged = new RunSessionDescriptor { runId = host.Life.RunId.ToString("N"), epoch = host.Epoch + 1, seed = "999", fingerprint = "forged", destination = 10, generationVersion = 1, weapon = "weapon.knife" };
+            SendJson(client.Network, host.Network.LocalClientId, "session.run.v5", JsonUtility.ToJson(forged));
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Run.Seed, Is.EqualTo(42)); Assert.That(host.CurrentRoom, Is.EqualTo(initial)); Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
             // Fault injection from the real server transport, deliberately corrupting graph agreement.
-            SendJson(host.Network, client.Network.LocalClientId, "session.run.v4", JsonUtility.ToJson(forged));
+            SendJson(host.Network, client.Network.LocalClientId, "session.run.v5", JsonUtility.ToJson(forged));
             yield return WaitFor(() => client.Failure != null, "mismatching descriptor rejection");
             Assert.That(client.Failure, Does.Contain("mismatch")); Assert.That(client.Run.Seed, Is.EqualTo(42));
         }

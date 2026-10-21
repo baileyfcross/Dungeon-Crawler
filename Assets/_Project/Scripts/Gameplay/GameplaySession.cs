@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Security.Cryptography;
 using SpaceCrawler.Core;
 using UnityEngine;
@@ -32,17 +33,26 @@ namespace SpaceCrawler.Gameplay
         public RoomLoader Rooms => rooms;
         public string WeaponDisplayName => startingWeapon != null ? startingWeapon.DisplayName : "Unarmed";
         private Action<RunCheckpoint> commitCheckpoint;
+        private Action<RunEndReceipt> endRun;
+        private ApplicationFlow flow;
+        private bool runFinished;
+        public RunLife Life { get; private set; }
+        public string HealthFailure { get; private set; }
+        public event Action HealthChanged;
         public bool PollLocalDevices { get; set; } = true;
 
         public void Bind(PlayerIdentity identity, ApplicationFlow flow, ulong? runSeed = null, bool useLevelSequence = false,
-            RunCheckpoint checkpoint = null, Action<RunCheckpoint> save = null, WeaponDefinition restoredWeapon = null)
+            RunCheckpoint checkpoint = null, Action<RunCheckpoint> save = null, WeaponDefinition restoredWeapon = null,
+            Guid? profileId = null, Action<RunEndReceipt> finish = null)
         {
             if (Simulation != null) throw new InvalidOperationException("Session is already bound.");
             if (generation == null) throw new InvalidOperationException("Missing run generation definition.");
             // The local session selects a seed once; a future authority can explicitly supply it.
             // Neither seed selection nor Unity state is consulted inside Core generation.
             var seed = runSeed ?? (Debug.isDebugBuild && useFixedSeed ? fixedSeed : CreateRunSeed());
-            commitCheckpoint = save;
+            commitCheckpoint = save; this.flow = flow; endRun = finish;
+            Life = new RunLife(checkpoint?.Life ?? RunLifeSnapshot.Fresh(1));
+            Life.BindProfile(0, profileId ?? (Life.Capture().Profiles[0] != Guid.Empty ? Life.Capture().Profiles[0] : Guid.NewGuid()));
             Sequence = checkpoint != null ? RunSequence.Restore(checkpoint, generation.CreateConfiguration())
                 : useLevelSequence ? new RunSequence(seed, generation.CreateConfiguration()) : null;
             if (checkpoint != null)
@@ -53,6 +63,8 @@ namespace SpaceCrawler.Gameplay
             }
             Run = Sequence?.CurrentGraph ?? new RunGenerator().Generate(seed, generation.CreateConfiguration());
             Simulation = new PlayerSimulation(identity, movementSpeed);
+            Simulation.SetLifeActive(Life[0].State == PlayerLifeState.Alive);
+            Life.Changed += ApplyLife;
             motor.Bind(Simulation);
             follower.Bind(motor.transform);
             combat.Bind(Simulation, startingWeapon != null ? startingWeapon.CreateConfiguration() : null);
@@ -82,11 +94,36 @@ namespace SpaceCrawler.Gameplay
 
         public void CommitCheckpoint(RunProgression progression)
         {
-            if (commitCheckpoint != null && Sequence != null)
-                commitCheckpoint(RunCheckpoint.Capture(Sequence, progression, SavedSessionMode.Solo, new[] { combat.Simulation.EquippedWeapon.Id }));
+            if (commitCheckpoint != null && Sequence != null && !Life.Ended)
+                commitCheckpoint(RunCheckpoint.Capture(Sequence, progression, SavedSessionMode.Solo, new[] { combat.Simulation.EquippedWeapon.Id }, Life.Capture()));
         }
 
-        private void Update() { if (PollLocalDevices) input.SampleMovement(); }
+        public void SaveCurrent()
+        { if (Rooms?.Progression != null && (Rooms.Progression.State == RoomFlowState.Playing || Rooms.Progression.State == RoomFlowState.Terminal)) CommitCheckpoint(Rooms.Progression); }
+        public bool DamagePlayer(Guid attackId, int amount) => Life.TryDamage(Simulation.State.Player, attackId, amount);
+        private void ApplyLife()
+        {
+            Simulation.SetLifeActive(Life[0].State == PlayerLifeState.Alive && !Life.Ended);
+            if (!Simulation.CanAct) Motor.Stop();
+            try { if (Life.Ended) FinishRun(); else SaveCurrent(); HealthFailure = null; }
+            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
+            { HealthFailure = "Progress could not be saved. Check storage availability. Retrying run completion."; }
+            HealthChanged?.Invoke();
+        }
+        private void FinishRun()
+        {
+            if (runFinished) return;
+            flow.BeginRunEnd(); endRun?.Invoke(Life.CreateReceipt(RunEndReason.Loss));
+            runFinished = true;
+            flow.TryRequest(ApplicationCommand.EndRun);
+        }
+
+        private void Update()
+        {
+            if (Life?.Ended == true && !runFinished) ApplyLife();
+            if (PollLocalDevices) input.SampleMovement();
+        }
+        private void OnDestroy() { if (Life != null) Life.Changed -= ApplyLife; }
         private void LateUpdate()
         {
             if (Simulation == null) return;

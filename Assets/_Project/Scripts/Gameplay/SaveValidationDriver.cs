@@ -24,6 +24,12 @@ namespace SpaceCrawler.Gameplay
         {
             yield return Until(() => root.Flow.State == ApplicationState.MainMenu);
             var mode = SessionDiagnostics.Option("--save-validation");
+            if (mode == "health-profile")
+            {
+                Check(root.Profile.Experience == 15 && root.Flow.ContinueAvailable, "permanent XP survives process restart with a fresh unfinished run");
+                Debug.Log("[SaveValidation] HEALTH-PROFILE-PASS"); Application.Quit(0); yield break;
+            }
+            if (mode == "health-prepare" || mode == "health-resume") { yield return RunHealth(mode); yield break; }
             var expected = root.SavedCheckpoint;
             var button = root.CurrentScreen.View.Q<Button>(mode == "prepare" ? "new-game" : "continue");
             if (mode == "invalid")
@@ -70,6 +76,36 @@ namespace SpaceCrawler.Gameplay
                 foreach (var target in session.Combat.Targets) Check(target.Health.Current == target.InitialHealth, "room combat reset");
                 Check(session.Combat.Simulation.EquippedWeapon.Id == expected.EquipmentIds[0], "equipment restored");
                 Debug.Log($"[SaveValidation] PASS-resumed seed={expected.RunSeed} level={expected.LevelNumber} room={expected.CurrentRoom}");
+            }
+            Application.Quit(0);
+        }
+        private void Submit(string name)
+        {
+            var button = root.CurrentScreen.View.Q<Button>(name); Check(button != null && button.enabledInHierarchy, name + " available");
+            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); }
+        }
+        private IEnumerator RunHealth(string mode)
+        {
+            Submit(mode == "health-prepare" ? "new-game" : "continue");
+            yield return Until(() => root.Flow.State == ApplicationState.Gameplay && root.CurrentGameplay != null);
+            var session = root.CurrentGameplay; session.PollLocalDevices = false;
+            if (mode == "health-prepare")
+            {
+                session.Life.TrySetMaximum(new PlayerIdentity(1), 150); session.DamagePlayer(Guid.NewGuid(), 25); session.Life.TryAwardRunXp(250);
+                Submit("return-to-menu"); yield return Until(() => root.Flow.State == ApplicationState.MainMenu);
+                Check(root.Profile.Experience == 0, "suspending a run grants no profile XP");
+                Debug.Log("[SaveValidation] HEALTH-PREPARED-PASS");
+            }
+            else
+            {
+                Check(session.Life[0].Current == 75 && session.Life[0].Maximum == 150 && session.Life.RunXp == 250, "health and XP restored");
+                session.DamagePlayer(Guid.NewGuid(), 1000); yield return Until(() => root.Flow.State == ApplicationState.Death);
+                Check(root.Profile.Experience == 15, "solo run-end reward");
+                Submit("death-return-to-menu"); yield return Until(() => root.Flow.State == ApplicationState.MainMenu);
+                Check(!root.Flow.ContinueAvailable && !root.RequestContinue(), "solo death invalidates Continue");
+                Submit("new-game"); yield return Until(() => root.Flow.State == ApplicationState.Gameplay);
+                Check(root.CurrentGameplay.Life[0].Current == 100 && root.CurrentGameplay.Life.RunXp == 0 && root.Profile.Experience == 15, "fresh run retains permanent XP only");
+                Debug.Log("[SaveValidation] HEALTH-RESUMED-DEATH-PASS");
             }
             Application.Quit(0);
         }

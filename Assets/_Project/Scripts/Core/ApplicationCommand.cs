@@ -8,6 +8,7 @@ namespace SpaceCrawler.Core
         Exit,
         Pause,
         Resume,
-        Continue
+        Continue,
+        EndRun
     }
 }

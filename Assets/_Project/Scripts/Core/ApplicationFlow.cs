@@ -13,10 +13,13 @@ namespace SpaceCrawler.Core
         public string ErrorMessage { get; private set; } = string.Empty;
         public event Action<ApplicationState> StateChanged;
         public bool ContinueAvailable { get; private set; }
+        public bool RunEndPending { get; private set; }
+        public void BeginRunEnd() => RunEndPending = true;
         public void SetContinueAvailable(bool available) => ContinueAvailable = available;
 
         public bool CanRequest(ApplicationCommand command)
         {
+            if (RunEndPending && command != ApplicationCommand.EndRun) return false;
             switch (command)
             {
                 case ApplicationCommand.Continue:
@@ -27,6 +30,8 @@ namespace SpaceCrawler.Core
                 case ApplicationCommand.Exit:
                     return State == ApplicationState.MainMenu;
                 case ApplicationCommand.ReturnToMainMenu:
+                    return State == ApplicationState.Gameplay || State == ApplicationState.Paused || State == ApplicationState.Death;
+                case ApplicationCommand.EndRun:
                     return State == ApplicationState.Gameplay || State == ApplicationState.Paused;
                 case ApplicationCommand.Pause:
                     return State == ApplicationState.Gameplay;
@@ -43,6 +48,8 @@ namespace SpaceCrawler.Core
                 return false;
 
             ErrorMessage = string.Empty;
+            if (command == ApplicationCommand.EndRun)
+            { RunEndPending = false; SetContinueAvailable(false); ChangeState(ApplicationState.Death); return true; }
             if (command == ApplicationCommand.Pause || command == ApplicationCommand.Resume)
             {
                 ChangeState(command == ApplicationCommand.Pause ? ApplicationState.Paused : ApplicationState.Gameplay);

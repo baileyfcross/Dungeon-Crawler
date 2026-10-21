@@ -13,6 +13,8 @@
                 </ui:VisualElement>
             </ui:VisualElement>
             <ui:Label name="run-readout" text="Loading generated room..." picking-mode="Ignore" style="white-space: normal; color: rgb(155, 185, 196); margin-top: 12px; font-size: 13px;" />
+            <ui:ProgressBar name="player-health" low-value="0" high-value="100" value="100" title="Health 100 / 100" picking-mode="Ignore" style="width: 260px; margin-top: 12px;" />
+            <ui:Label name="health-status" text="" picking-mode="Ignore" style="white-space: normal;" />
             <ui:VisualElement class="hud-spacer" picking-mode="Ignore" />
             <ui:Label text="MOVE  WASD / ARROWS / LEFT STICK     AIM  POINTER / RIGHT STICK     PAUSE  ESC / START" class="controls" picking-mode="Ignore" />
         </ui:VisualElement>
@@ -26,6 +28,13 @@
                 <ui:Button name="pause-return-to-menu" text="Return to Main Menu" />
                 <ui:Label name="pause-hint" text="Release movement controls before resuming.&#10;Focus loss pauses gameplay automatically." class="description pause-hint" />
                 <ui:Label name="status" class="status" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="death-overlay" class="pause-overlay" style="display: none;">
+            <ui:VisualElement class="pause-card">
+                <ui:Label text="Run Over" class="title" />
+                <ui:Label text="Your run has ended. Earned profile experience is preserved." class="description" style="white-space: normal;" />
+                <ui:Button name="death-return-to-menu" text="Return to Main Menu" class="primary" />
             </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>

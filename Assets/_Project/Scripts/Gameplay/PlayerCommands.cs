@@ -11,6 +11,7 @@ namespace SpaceCrawler.Gameplay
         bool Move(MoveIntent intent);
         bool Aim(AimIntent intent);
         bool Attack(AttackIntent intent);
+        bool Interact(PlayerIdentity player, bool held);
     }
 
     public sealed class LocalPlayerCommands : IPlayerCommands
@@ -24,5 +25,6 @@ namespace SpaceCrawler.Gameplay
         public bool Move(MoveIntent intent) => player.RequestMove(intent);
         public bool Aim(AimIntent intent) => player.RequestAim(intent);
         public bool Attack(AttackIntent intent) => combat != null && combat.RequestAttack(intent);
+        public bool Interact(PlayerIdentity identity, bool held) => false;
     }
 }

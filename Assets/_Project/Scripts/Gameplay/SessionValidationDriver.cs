@@ -8,8 +8,8 @@ using CoreVector = System.Numerics.Vector2;
 
 namespace SpaceCrawler.Gameplay
 {
-    /// <summary>Opt-in two-OS-process validation driver. Produces ordinary local commands only;
-    /// never writes physics, health, graph, readiness, or progression. Absent from release players.</summary>
+    /// <summary>Opt-in two-process fixtures. Traversal uses ordinary player commands; health fixtures
+    /// explicitly simulate damage/XP through host APIs without enabling a gameplay reward source. Absent in release.</summary>
     public sealed class SessionValidationDriver : MonoBehaviour
     {
         private MultiplayerSession session;
@@ -87,6 +87,9 @@ namespace SpaceCrawler.Gameplay
             yield return Until(() => session.RoomReady, "initial room handshake");
             if (SessionDiagnostics.Option("--session-validation") == "enemies")
             { yield return RunEnemies(); yield break; }
+            var mode = SessionDiagnostics.Option("--session-validation");
+            if (mode == "health" || mode == "health-checkpoint" || mode == "health-resume")
+            { yield return RunHealth(mode); yield break; }
             if (SessionDiagnostics.Option("--session-validation") == "resume")
                 Check(session.LevelNumber == 2 && session.CurrentRoom.Value != 0, "cooperative checkpoint restored on both peers");
             Local.Input.HandleFocus(true); flow.TryRequest(ApplicationCommand.Resume); began = Time.realtimeSinceStartupAsDouble;
@@ -172,6 +175,55 @@ namespace SpaceCrawler.Gameplay
             yield return new WaitForSeconds(.3f);
             Record("10-PASS-terminal-remains-playable");
             if (!Host) { yield return new WaitForSeconds(1); Record("11-client-graceful-disconnect"); Application.Quit(0); }
+        }
+
+        private IEnumerator RunHealth(string mode)
+        {
+            Local.Input.HandleFocus(true); flow.TryRequest(ApplicationCommand.Resume); began = Time.realtimeSinceStartupAsDouble;
+            if (mode == "health-resume")
+            {
+                Check(session.Vitals(0).Current == 77 && session.Vitals(1).State == PlayerLifeState.Downed && session.RunXp == 100,
+                    "checkpoint restored health, XP and downed partner");
+                Record("HEALTH-RESTORED-PASS");
+                if (Host) { var target = session.Players[1].State.Position; yield return Walk(target.X - 1, target.Y); }
+            }
+            else
+            {
+                yield return Walk(Host ? -.5f : .5f, 3);
+                yield return At(2);
+                if (Host) { session.Life.TryAwardRunXp(100); session.DamagePlayer(new PlayerIdentity(2), Guid.NewGuid(), 100); }
+                yield return Until(() => session.Vitals(1).State == PlayerLifeState.Downed, "downed partner replication");
+                Record("HEALTH-DOWNED-PASS");
+                yield return At(3);
+                if (Host) { session.LocalCommands.Interact(new PlayerIdentity(1), false); session.LocalCommands.Interact(new PlayerIdentity(1), true); }
+                yield return At(4.2);
+                if (Host) session.LocalCommands.Interact(new PlayerIdentity(1), false);
+                yield return At(4.5);
+                Check(session.Vitals(1).State == PlayerLifeState.Downed, "partial revive cannot finish after release");
+                Record("HEALTH-REVIVE-CANCEL-PASS");
+            }
+            if (Host) { session.LocalCommands.Interact(new PlayerIdentity(1), false); session.LocalCommands.Interact(new PlayerIdentity(1), true); }
+            yield return Until(() => session.Vitals(1).Current == 50, "three-second hold revives at half health");
+            Record("HEALTH-REVIVE-PASS");
+            yield return new WaitForSeconds(.5f);
+            if (mode == "health-checkpoint")
+            {
+                if (Host)
+                { session.DamagePlayer(new PlayerIdentity(1), Guid.NewGuid(), 23); session.DamagePlayer(new PlayerIdentity(2), Guid.NewGuid(), 100); }
+                yield return Until(() => session.Vitals(0).Current == 77 && session.Vitals(1).State == PlayerLifeState.Downed, "downed checkpoint committed");
+                Record("HEALTH-CHECKPOINT-PASS"); while (true) yield return null;
+            }
+            yield return new WaitForSeconds(.5f);
+            if (Host)
+            { session.DamagePlayer(new PlayerIdentity(1), Guid.NewGuid(), 1000); session.DamagePlayer(new PlayerIdentity(2), Guid.NewGuid(), 1000); }
+            yield return Until(() => flow.State == ApplicationState.Death, "party loss reaches death screen");
+            var folder = SessionDiagnostics.Option("--save-directory");
+            var profile = new ProfileProgressStore(folder);
+            Check(profile.Profile.Experience == 6, "each profile receives full six percent of shared run XP");
+            Check(new RunCheckpointStore(System.IO.Path.Combine(folder, "run.save")).Load(out _, out _) == CheckpointLoadStatus.Missing, "ended run cannot continue");
+            if (Host) yield return Until(() => profile.PendingFor(session.Life.Capture().Profiles[1]).Count == 0, "peer reward acknowledged");
+            Record("HEALTH-PASS");
+            if (!Host) { yield return new WaitForSeconds(1); Application.Quit(0); }
         }
 
         private IEnumerator RunEnemies()

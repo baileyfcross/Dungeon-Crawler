@@ -8,7 +8,9 @@ namespace SpaceCrawler.Core
     {
         public PlayerState State { get; private set; }
         public float MovementSpeed { get; }
-        public bool IsActive { get; private set; }
+        private bool active;
+        public bool CanAct { get; private set; } = true;
+        public bool IsActive => active && CanAct;
         public Vector2 DesiredVelocity { get; private set; }
 
         public PlayerSimulation(PlayerIdentity player, float movementSpeed)
@@ -22,9 +24,12 @@ namespace SpaceCrawler.Core
 
         public void SetActive(bool active)
         {
-            IsActive = active;
+            this.active = active;
             if (!active) DesiredVelocity = Vector2.Zero;
         }
+
+        public void SetLifeActive(bool alive)
+        { CanAct = alive; if (!alive) DesiredVelocity = Vector2.Zero; }
 
         public bool RequestMove(MoveIntent intent)
         {

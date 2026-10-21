@@ -22,6 +22,9 @@ namespace SpaceCrawler.Gameplay
         private RunCheckpointStore checkpointStore;
         private RunCheckpoint pendingCheckpoint;
         private string saveNotice;
+        private ProfileProgressStore progress;
+        public ProfileProgress Profile => progress?.Profile;
+        private string profileFailure;
         public RunCheckpoint SavedCheckpoint { get; private set; }
 #if UNITY_EDITOR
         public static string SaveDirectoryOverride { get; set; }
@@ -52,9 +55,17 @@ namespace SpaceCrawler.Gameplay
 
         private bool ReadCheckpoint(out RunCheckpoint checkpoint, out string message)
         {
+            if (progress == null) { checkpoint = null; message = profileFailure; return false; }
             var status = checkpointStore.Load(out checkpoint, out message);
             if (status != CheckpointLoadStatus.Valid) return false;
-            try { multiplayerSession.ValidateCheckpoint(checkpoint); return true; }
+            try
+            {
+                multiplayerSession.ValidateCheckpoint(checkpoint);
+                if (Profile.HasEndedRun(checkpoint.Life.RunId)) throw new InvalidOperationException("This run has ended.");
+                if (checkpoint.Life.Profiles[0] != Guid.Empty && checkpoint.Life.Profiles[0] != Profile.Id)
+                    throw new InvalidOperationException("Run belongs to a different host profile.");
+                return true;
+            }
             catch (Exception exception) when (exception is ArgumentException || exception is InvalidOperationException || exception is NotSupportedException)
             { checkpoint = null; message = "Saved run is incompatible with the installed level or equipment data."; return false; }
         }
@@ -66,6 +77,8 @@ namespace SpaceCrawler.Gameplay
             Flow.SetContinueAvailable(valid);
             CurrentScreen?.UpdateContinue(SavedCheckpoint);
             CurrentScreen?.ShowSaveStatus(!string.IsNullOrEmpty(saveNotice) ? saveNotice : message);
+            CurrentScreen?.SetProfileAvailable(progress != null, profileFailure);
+            CurrentScreen?.ShowProfile(Profile);
         }
 
         private void CommitCheckpoint(RunCheckpoint checkpoint)
@@ -92,7 +105,26 @@ namespace SpaceCrawler.Gameplay
             saveDirectory = SaveDirectoryOverride ?? saveDirectory;
 #endif
             checkpointStore = new RunCheckpointStore(Path.Combine(saveDirectory, "run.save"));
+            try { progress = new ProfileProgressStore(saveDirectory); }
+            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is ArgumentException)
+            { profileFailure = "Profile could not be loaded safely. Existing progress is preserved. Check storage and permissions."; }
             Flow.StateChanged += PresentState;
+        }
+
+        private void FinishRun(RunEndReceipt receipt)
+        {
+            if (progress == null) throw new IOException(profileFailure);
+            progress.EndRun(receipt); SavedCheckpoint = null; Flow.SetContinueAvailable(false);
+        }
+
+        private void SaveUnfinishedRun()
+        { CurrentGameplay?.SaveCurrent(); CurrentMultiplayer?.SaveCurrent(); }
+
+        private void OnApplicationQuit()
+        {
+            try { SaveUnfinishedRun(); }
+            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
+            { Debug.LogError("Unfinished run could not be saved: " + exception.Message, this); }
         }
 
         private void Start() => Flow.TryRequest(ApplicationCommand.Initialize);
@@ -117,8 +149,11 @@ namespace SpaceCrawler.Gameplay
 
         private async void LoadDestination(ApplicationState destination)
         {
+            var sceneLoadStarted = false;
             try
             {
+                if (destination == ApplicationState.MainMenu) SaveUnfinishedRun();
+                if (destination == ApplicationState.Gameplay && progress == null) throw new IOException(profileFailure);
                 if (destination == ApplicationState.Gameplay && Flow.PendingCommand == ApplicationCommand.Continue)
                 {
                     if (!ReadCheckpoint(out pendingCheckpoint, out var message)) throw new IOException(message);
@@ -133,6 +168,7 @@ namespace SpaceCrawler.Gameplay
                     throw new InvalidOperationException("Missing room-enabled gameplay session prefab.");
                 if (destination == ApplicationState.Gameplay && pendingSessionRole != SessionRole.None && multiplayerSession == null)
                     throw new InvalidOperationException("Missing explicitly authored multiplayer session composition.");
+                sceneLoadStarted = true;
                 if (CurrentMultiplayer != null)
                 { CurrentMultiplayer.Stop(); Destroy(CurrentMultiplayer.gameObject); CurrentMultiplayer = null; }
 
@@ -148,7 +184,8 @@ namespace SpaceCrawler.Gameplay
                     {
                         CurrentGameplay = Instantiate(gameplaySession);
                         CurrentGameplay.Bind(new PlayerIdentity(1), Flow, useLevelSequence: true, checkpoint: pendingCheckpoint,
-                            save: CommitCheckpoint, restoredWeapon: pendingCheckpoint != null ? multiplayerSession.ResolveWeapon(pendingCheckpoint.EquipmentIds[0]) : null);
+                            save: CommitCheckpoint, restoredWeapon: pendingCheckpoint != null ? multiplayerSession.ResolveWeapon(pendingCheckpoint.EquipmentIds[0]) : null,
+                            profileId: Profile.Id, finish: FinishRun);
                     }
                     else
                     {
@@ -158,7 +195,8 @@ namespace SpaceCrawler.Gameplay
                         var port = ushort.TryParse(SessionDiagnostics.Option("--session-port"), out var requestedPort) ? requestedPort : (ushort)7777;
                         ulong? seed = pendingSessionRole == SessionRole.Host && ulong.TryParse(SessionDiagnostics.Option("--session-seed"), out var requestedSeed) ? requestedSeed : (ulong?)null;
                         CurrentMultiplayer.Bind(pendingSessionRole, Flow, address, port, seed, useLevelSequence: true,
-                            checkpoint: pendingCheckpoint, save: CommitCheckpoint);
+                            checkpoint: pendingCheckpoint, save: CommitCheckpoint, profileId: Profile.Id, finish: FinishRun,
+                            pendingRewards: progress.PendingFor, acknowledgeReward: progress.Acknowledge);
                     }
                 }
                 else { CurrentGameplay = null; pendingSessionRole = SessionRole.None; }
@@ -200,6 +238,12 @@ namespace SpaceCrawler.Gameplay
             catch (Exception exception)
             {
                 Debug.LogException(exception, this);
+                if (!sceneLoadStarted && destination == ApplicationState.MainMenu && (CurrentGameplay != null || CurrentMultiplayer != null))
+                {
+                    Flow.FailLoading("Unable to save the unfinished run. Check storage availability before leaving.");
+                    CurrentScreen?.ShowSaveStatus(Flow.ErrorMessage);
+                    return;
+                }
                 Flow.FailLoading("Unable to open the requested screen. See the application log.");
                 if (CurrentMultiplayer != null) { CurrentMultiplayer.Stop(); Destroy(CurrentMultiplayer.gameObject); CurrentMultiplayer = null; }
                 if (CurrentGameplay != null) { Destroy(CurrentGameplay.gameObject); CurrentGameplay = null; }

@@ -18,6 +18,9 @@ namespace SpaceCrawler.Gameplay
         private WeaponConfiguration weapon;
         private bool authoritative;
         private long presentedAttacks;
+        private Color aliveColor;
+        public PlayerVitals Vitals { get; private set; } = PlayerVitals.Starting;
+        public float ReviveProgress { get; set; }
         public PlayerSimulation Simulation { get; private set; }
         public PlayerMotor Motor => motor;
         public PlayerInputAdapter Input => input;
@@ -31,6 +34,7 @@ namespace SpaceCrawler.Gameplay
             authoritative = hostAuthority; weapon = configuration;
             replica = new PlayerState(identity, CoreVector.Zero, CoreVector.Zero, CoreVector.UnitX);
             bodySprite.color = local ? new Color(0.3f, 0.86f, 0.83f) : new Color(0.87f, 0.56f, 0.95f);
+            aliveColor = bodySprite.color;
             if (authoritative)
             {
                 Simulation = new PlayerSimulation(identity, 5);
@@ -54,6 +58,7 @@ namespace SpaceCrawler.Gameplay
                 Position = new Vector2(state.Position.X, state.Position.Y), Velocity = new Vector2(state.Velocity.X, state.Velocity.Y),
                 Aim = new Vector2(state.AimDirection.X, state.AimDirection.Y),
                 Attacks = combat.Simulation.AcceptedAttackCount, Cooldown = combat.Simulation.CooldownRemaining, InputEnabled = inputEnabled,
+                Health = Vitals.Current, MaximumHealth = Vitals.Maximum, LifeState = (int)Vitals.State, ReviveProgress = ReviveProgress,
                 AttackOrigin = last == null ? Vector2.zero : new Vector2(last.Origin.X, last.Origin.Y),
                 AttackAim = last == null ? Vector2.right : new Vector2(last.AimDirection.X, last.AimDirection.Y)
             };
@@ -63,6 +68,10 @@ namespace SpaceCrawler.Gameplay
         {
             if (authoritative || state.Player != replica.Player.Value) throw new InvalidOperationException("Invalid replica ownership.");
             LastSnapshot = state;
+            PresentVitals(new PlayerVitals(state.Health, state.MaximumHealth, (PlayerLifeState)state.LifeState));
+            if (float.IsNaN(state.ReviveProgress) || float.IsInfinity(state.ReviveProgress) || state.ReviveProgress < 0 || state.ReviveProgress > RunLife.ReviveSeconds)
+                throw new InvalidOperationException("Invalid revival progress.");
+            ReviveProgress = state.ReviveProgress;
             replica = new PlayerState(replica.Player, new CoreVector(state.Position.x, state.Position.y),
                 new CoreVector(state.Velocity.x, state.Velocity.y), new CoreVector(state.Aim.x, state.Aim.y));
             motor.transform.position = new Vector3(state.Position.x, state.Position.y, 0);
@@ -77,5 +86,12 @@ namespace SpaceCrawler.Gameplay
             if (authoritative) motor.Stop();
         }
         public void Present() => presentation.Present(State);
+        public void PresentVitals(PlayerVitals vitals)
+        {
+            Vitals = vitals; bodySprite.color = vitals.State == PlayerLifeState.Alive ? aliveColor : new Color(.45f, .45f, .5f);
+            if (Simulation == null) return;
+            Simulation.SetLifeActive(vitals.State == PlayerLifeState.Alive);
+            if (!Simulation.CanAct) motor.Stop();
+        }
     }
 }

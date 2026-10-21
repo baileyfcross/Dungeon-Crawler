@@ -8,7 +8,8 @@ namespace SpaceCrawler.Gameplay
 
     [Serializable] public sealed class RunSessionDescriptor
     {
-        public int protocol = 4, generationVersion, currentRoom, destination, state;
+        public int protocol = 5, generationVersion, currentRoom, destination, state;
+        public string runId;
         public int level = 1, sequenceVersion;
         public bool levels;
         public string runSeed;
@@ -16,14 +17,18 @@ namespace SpaceCrawler.Gameplay
         public string seed, fingerprint, weapon;
     }
     [Serializable] public sealed class RoomLoadAcknowledgment
-    { public uint epoch; public int room, level; public string fingerprint; }
+    { public uint epoch; public int room, level; public string fingerprint, profileId; }
+    [Serializable] public sealed class RunEndMessage
+    { public string runId; public long xp; public int reason, percent; public string[] profiles; }
+    [Serializable] public sealed class RewardAcknowledgment
+    { public string runId, profileId; }
 
     public struct PlayerInputMessage : INetworkSerializeByMemcpy
     {
         public uint Epoch;
         public ulong Sequence, AttackSequence;
         public int ClaimedPlayer;
-        public bool Active;
+        public bool Active, InteractHeld;
         public Vector2 Move, Aim;
     }
     public struct SessionStateHeader : INetworkSerializeByMemcpy
@@ -32,6 +37,7 @@ namespace SpaceCrawler.Gameplay
         public ulong Tick;
         public int CurrentRoom, State, RoomsEntered, LeftReady, RightReady, Level;
         public bool Running;
+        public long RunXp;
     }
     public struct PlayerStateSnapshot : INetworkSerializeByMemcpy
     {
@@ -40,6 +46,8 @@ namespace SpaceCrawler.Gameplay
         public long Attacks;
         public float Cooldown;
         public bool InputEnabled;
+        public int Health, MaximumHealth, LifeState;
+        public float ReviveProgress;
     }
     public struct TargetStateSnapshot : INetworkSerializeByMemcpy
     { public int Identity, Current, Maximum; }
