@@ -12,27 +12,34 @@ namespace SpaceCrawler.Gameplay
     {
         [SerializeField] private InputActionAsset actions;
         private InputActionMap playerMap;
-        private InputAction move, aim, pause;
+        private InputAction move, aim, pause, attack;
         private Vector2Control pointer, stick;
         private bool useStick, movementNeedsNeutral, stickNeedsNeutral;
         private bool focused = true;
         private int activationFrame;
-        private PlayerSimulation simulation;
+        private IPlayerCommands commands;
         private ApplicationFlow flow;
-        public bool GameplayInputEnabled => simulation != null && simulation.IsActive;
+        private Func<Vector2, bool> pointerOverUi;
+        private bool attackNeedsRelease;
+        private bool roomAvailable = true;
+        public bool GameplayInputEnabled => commands != null && commands.InputActive;
         public bool MovementNeedsNeutral => movementNeedsNeutral;
         public string AimSource => useStick ? "Right stick" : "Absolute pointer";
 
-        public void Bind(PlayerSimulation playerSimulation, ApplicationFlow applicationFlow)
+        public void Bind(PlayerSimulation playerSimulation, ApplicationFlow applicationFlow, CombatResolver combatResolver = null)
+            => Bind(new LocalPlayerCommands(playerSimulation, combatResolver), applicationFlow);
+
+        public void Bind(IPlayerCommands commandTarget, ApplicationFlow applicationFlow)
         {
-            if (simulation != null) throw new InvalidOperationException("Input is already bound.");
-            simulation = playerSimulation;
+            if (commands != null) throw new InvalidOperationException("Input is already bound.");
+            commands = commandTarget ?? throw new ArgumentNullException(nameof(commandTarget));
             flow = applicationFlow;
             // One explicitly owned local map from the canonical asset; UI keeps its project-wide map.
             playerMap = actions.FindActionMap("Player", true).Clone();
             move = playerMap.FindAction("Move", true);
             aim = playerMap.FindAction("Aim", true);
             pause = playerMap.FindAction("Pause", true);
+            attack = playerMap.FindAction("Attack", true);
             aim.performed += ObserveAimDevice;
             flow.StateChanged += ApplyGate;
             ApplyGate(flow.State);
@@ -40,29 +47,31 @@ namespace SpaceCrawler.Gameplay
 
         private void ApplyGate(ApplicationState state)
         {
-            var active = focused && state == ApplicationState.Gameplay;
-            simulation.SetActive(active);
+            var active = focused && roomAvailable && state == ApplicationState.Gameplay;
+            commands.SetInputActive(active);
             if (active)
             {
                 activationFrame = Time.frameCount;
                 movementNeedsNeutral = true;
                 stickNeedsNeutral = true;
+                attackNeedsRelease = true;
                 move.Enable();
                 aim.Enable();
+                attack.Enable();
                 foreach (var control in aim.controls)
                 {
                     if (control.device is Pointer && control is Vector2Control position) pointer = position;
                     if (control.device is Gamepad && control is Vector2Control rightStick) stick = rightStick;
                 }
             }
-            else { move.Disable(); aim.Disable(); }
+            else { move.Disable(); aim.Disable(); attack.Disable(); }
             if (focused && (state == ApplicationState.Gameplay || state == ApplicationState.Paused)) pause.Enable();
             else pause.Disable();
         }
 
         public void SampleMovement()
         {
-            if (simulation == null) return;
+            if (commands == null) return;
             if (pause.enabled && pause.WasPressedThisFrame())
             {
                 flow.TryRequest(flow.State == ApplicationState.Paused ? ApplicationCommand.Resume : ApplicationCommand.Pause);
@@ -75,7 +84,7 @@ namespace SpaceCrawler.Gameplay
                 if (direction.sqrMagnitude < 0.000001f) movementNeedsNeutral = false;
                 return;
             }
-            simulation.RequestMove(new MoveIntent(simulation.State.Player, new CoreVector(direction.x, direction.y)));
+            commands.Move(new MoveIntent(commands.State.Player, new CoreVector(direction.x, direction.y)));
         }
 
         private void ObserveAimDevice(InputAction.CallbackContext context)
@@ -105,7 +114,7 @@ namespace SpaceCrawler.Gameplay
             else if (pointer != null)
                 direction = PointerWorldDirection(camera, pointer.ReadValue(), presentedPlayerPosition);
             else return;
-            simulation.RequestAim(new AimIntent(simulation.State.Player, new CoreVector(direction.x, direction.y)));
+            commands.Aim(new AimIntent(commands.State.Player, new CoreVector(direction.x, direction.y)));
         }
 
         public static Vector2 PointerWorldDirection(Camera camera, Vector2 screenPosition, Vector2 playerPosition)
@@ -115,7 +124,42 @@ namespace SpaceCrawler.Gameplay
             return plane.Raycast(ray, out var distance) ? (Vector2)ray.GetPoint(distance) - playerPosition : Vector2.zero;
         }
 
-        private void OnApplicationFocus(bool hasFocus) => HandleFocus(hasFocus);
+        public void SetUiGate(Func<Vector2, bool> isPointerOverInteractiveUi) => pointerOverUi = isPointerOverInteractiveUi;
+
+        // The room orchestration supplies availability; input still submits only intentions.
+        public void SetRoomAvailable(bool available)
+        {
+            roomAvailable = available;
+            if (flow != null) ApplyGate(flow.State);
+        }
+
+        // Called after SampleAim: the command carries accepted gameplay aim, never raw device aim.
+        public void SampleAttack()
+        {
+            if (!GameplayInputEnabled || Time.frameCount <= activationFrame) return;
+            if (attackNeedsRelease)
+            {
+                if (!attack.IsPressed()) attackNeedsRelease = false;
+                return;
+            }
+            if (!attack.WasPressedThisFrame()) return;
+            if (attack.activeControl?.device is Pointer attackPointer && pointerOverUi != null
+                && pointerOverUi(attackPointer.position.ReadValue())) return;
+            commands.Attack(new AttackIntent(commands.State.Player, commands.State.AimDirection));
+        }
+
+#if UNITY_EDITOR
+        // Test-runner isolation only. Explicit HandleFocus calls still exercise the complete rule.
+        // Native smoke tests leave this enabled; the switch is absent from standalone builds.
+        public static bool ReceiveNativeFocusEvents { get; set; } = true;
+#endif
+        private void OnApplicationFocus(bool hasFocus)
+        {
+#if UNITY_EDITOR
+            if (!ReceiveNativeFocusEvents) return;
+#endif
+            HandleFocus(hasFocus);
+        }
 
         public void HandleFocus(bool hasFocus)
         {

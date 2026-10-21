@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 024c9c2afa881274082a2072980a43a2, type: 3}
+  m_Name: Cockpit
+  m_EditorClassIdentifier: SpaceCrawler.Gameplay::SpaceCrawler.Gameplay.RoomDefinition
+  stableId: room.cockpit
+  category: 2
+  generationWeight: 1
+  roomPrefab: {fileID: 8824484256439456387, guid: ad950874befed3546ad4f55264b640cd, type: 3}

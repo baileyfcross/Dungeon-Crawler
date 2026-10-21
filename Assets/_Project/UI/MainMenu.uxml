@@ -3,12 +3,12 @@
     <ui:VisualElement class="screen">
         <ui:VisualElement class="top-line">
             <ui:Label text="SPACE CRAWLER" class="brand" />
-            <ui:Label text="CONTROLS / 02" class="eyebrow" />
+            <ui:Label text="AUTHORED ROOMS / 05" class="eyebrow" />
         </ui:VisualElement>
         <ui:VisualElement class="content">
             <ui:Label text="MAIN MENU" class="eyebrow accent" />
             <ui:Label text="Space Crawler" class="title" />
-            <ui:Label text="Player controls prototype" class="subtitle" />
+            <ui:Label text="Forward room traversal prototype" class="subtitle" />
             <ui:VisualElement class="actions">
                 <ui:Button name="new-game" text="New Game" class="primary" />
                 <ui:Button name="continue" text="Continue  /  No save available" enabled="false" />
@@ -18,6 +18,12 @@
             </ui:VisualElement>
             <ui:Label name="status" class="status" />
         </ui:VisualElement>
-        <ui:Label text="PHASE 2  /  New Game opens the controls test area. No combat or save data is created." class="footer" />
+        <ui:Label text="PHASE 5  /  Walk into north-side exit pads. Primitive targets do not gate exits. No save data or victory objective." class="footer" />
+        <ui:VisualElement name="spike-menu" style="position: absolute; right: 52px; top: 260px; width: 330px; display: none;">
+            <ui:Label text="DEVELOPMENT ONLY / TWO-PLAYER SPIKE" class="eyebrow accent" />
+            <ui:Label text="Direct localhost :7777. Start one host, then join from a second instance. No lobby or matchmaking." class="description" style="font-size: 14px; margin-top: 12px; margin-bottom: 16px;" />
+            <ui:Button name="dev-host" text="Host technical session" />
+            <ui:Button name="dev-join" text="Join technical session" />
+        </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

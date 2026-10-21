@@ -1,6 +1,6 @@
 {
     "name": "SpaceCrawler.Gameplay",
     "rootNamespace": "SpaceCrawler.Gameplay",
-    "references": ["SpaceCrawler.Core", "Unity.InputSystem"],
+    "references": ["SpaceCrawler.Core", "Unity.InputSystem", "Unity.Netcode.Runtime", "Unity.Networking.Transport", "Unity.Collections"],
     "autoReferenced": true
 }

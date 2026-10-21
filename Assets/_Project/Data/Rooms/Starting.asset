@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 024c9c2afa881274082a2072980a43a2, type: 3}
+  m_Name: Starting
+  m_EditorClassIdentifier: SpaceCrawler.Gameplay::SpaceCrawler.Gameplay.RoomDefinition
+  stableId: room.starting
+  category: 0
+  generationWeight: 1
+  roomPrefab: {fileID: 8354113334965724962, guid: 5669a16b1f74ffc49b7099a4dd926c32, type: 3}

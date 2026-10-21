@@ -3,6 +3,8 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 
 namespace SpaceCrawler.Editor
 {
@@ -14,13 +16,35 @@ namespace SpaceCrawler.Editor
         [SerializeField] private TestMode expectedMode;
         [SerializeField] private bool recording;
         [SerializeField] private bool restoreStartupScene;
+        [SerializeField] private int excludedNativeEvents;
 
         private void OnEnable()
         {
-            if (recording) TestRunnerApi.RegisterTestCallback(this);
+            if (recording) { TestRunnerApi.RegisterTestCallback(this); InstallInputIsolation(); }
         }
 
-        private void OnDisable() => TestRunnerApi.UnregisterTestCallback(this);
+        private void OnDisable()
+        { TestRunnerApi.UnregisterTestCallback(this); InputSystem.onEvent -= IsolateNativeInput; SpaceCrawler.Gameplay.PlayerInputAdapter.ReceiveNativeFocusEvents = true; }
+
+        private void InstallInputIsolation()
+        {
+            InputSystem.onEvent -= IsolateNativeInput;
+            if (expectedMode == TestMode.PlayMode)
+            {
+                InputSystem.onEvent += IsolateNativeInput;
+                SpaceCrawler.Gameplay.PlayerInputAdapter.ReceiveNativeFocusEvents = false;
+            }
+        }
+
+        // Live desktop events must not compete with the suites' explicit synthetic devices.
+        // This is scoped to automated Play Mode runs; real-device smoke tests remain unfiltered.
+        private void IsolateNativeInput(InputEventPtr inputEvent, InputDevice device)
+        {
+            if (!recording || !Application.isPlaying || device == null || !device.native
+                || !(device is Pointer || device is Keyboard || device is Gamepad)
+                || (!inputEvent.IsA<StateEvent>() && !inputEvent.IsA<DeltaStateEvent>())) return;
+            inputEvent.handled = true; excludedNativeEvents++;
+        }
 
         public void Begin(TestMode mode, string path)
         {
@@ -34,6 +58,7 @@ namespace SpaceCrawler.Editor
                 EditorSceneManager.playModeStartScene = null;
             }
             TestRunnerApi.RegisterTestCallback(this);
+            InstallInputIsolation();
         }
 
         public void RunStarted(ITestAdaptor testsToRun) { }
@@ -49,7 +74,7 @@ namespace SpaceCrawler.Editor
                 TestRunnerApi.SaveResultToFile(result, resultPath);
                 File.WriteAllText(Path.ChangeExtension(resultPath, ".summary.txt"),
                     $"{result.ResultState}: {result.PassCount} passed, {result.FailCount} failed, " +
-                    $"{result.SkipCount} skipped; {result.Duration:F3}s");
+                    $"{result.SkipCount} skipped; {result.Duration:F3}s\nNative desktop events excluded during synthetic-device tests: {excludedNativeEvents}");
             }
             finally { DestroyImmediate(this); }
         }
@@ -65,6 +90,8 @@ namespace SpaceCrawler.Editor
         private void StopRecording()
         {
             recording = false;
+            InputSystem.onEvent -= IsolateNativeInput;
+            SpaceCrawler.Gameplay.PlayerInputAdapter.ReceiveNativeFocusEvents = true;
             // Unregister immediately: a later test run must never overwrite this run's report.
             TestRunnerApi.UnregisterTestCallback(this);
             if (restoreStartupScene)

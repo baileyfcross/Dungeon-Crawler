@@ -12,6 +12,22 @@ namespace SpaceCrawler.Gameplay
         public Rigidbody2D Body => body;
         public void Bind(PlayerSimulation playerSimulation) => simulation = playerSimulation;
 
+        public void Stop()
+        {
+            body.linearVelocity = Vector2.zero;
+            body.angularVelocity = 0;
+            CaptureState();
+        }
+
+        // Called by room orchestration after the progression authority accepts entry.
+        public void PlaceAt(Vector2 position)
+        {
+            Stop();
+            body.position = position;
+            transform.position = new Vector3(position.x, position.y, 0);
+            CaptureState();
+        }
+
         private void FixedUpdate()
         {
             if (simulation == null) return;

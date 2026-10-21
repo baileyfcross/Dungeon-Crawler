@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf93d1d43da17fb4db05d3e125f06623, type: 3}
+  m_Name: DefaultRun
+  m_EditorClassIdentifier: SpaceCrawler.Gameplay::SpaceCrawler.Gameplay.RunGenerationDefinition
+  minRouteRooms: 9
+  maxRouteRooms: 11
+  maxSplits: 3
+  roomDefinitions:
+  - {fileID: 11400000, guid: bccdb51408627bc478bb63043caac374, type: 2}
+  - {fileID: 11400000, guid: 506720bc16edf2d4ab8b4f06c62375c7, type: 2}
+  - {fileID: 11400000, guid: ca18934f717a8dc439771756c2f6903a, type: 2}
+  - {fileID: 11400000, guid: 94ddfa6c46f02e145bcb95bc8a7a698d, type: 2}
+  - {fileID: 11400000, guid: 1ead3d21a9567ca439d858f6f57ada7b, type: 2}
+  - {fileID: 11400000, guid: da7b07873e6500b4fad83e78eba15ba1, type: 2}

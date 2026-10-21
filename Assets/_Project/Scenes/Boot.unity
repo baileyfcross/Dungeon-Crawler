@@ -152,7 +152,8 @@ MonoBehaviour:
   gameplayScenePath: Assets/_Project/Scenes/Gameplay.unity
   mainMenuScreen: {fileID: 966593826675462466, guid: 03a5efb1a22b12d4781d86c72c0e2f88, type: 3}
   gameplayScreen: {fileID: 1494231167733891751, guid: 6a9e38d3e6736fe4488ab20b9b94dd09, type: 3}
-  gameplaySession: {fileID: 7076825477823257469, guid: 940fd47665f884a40abe56d0f888575e, type: 3}
+  gameplaySession: {fileID: 5018639779424510252, guid: fc3e9c49338881e4dba32248a5c8b118, type: 3}
+  multiplayerSession: {fileID: 3430710959875513828, guid: 38e3fa19844b6c9439fc1092b3e238ae, type: 3}
 --- !u!4 &574115448
 Transform:
   m_ObjectHideFlags: 0
