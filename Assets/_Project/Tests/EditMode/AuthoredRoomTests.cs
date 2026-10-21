@@ -54,6 +54,29 @@ namespace SpaceCrawler.Tests.EditMode
         }
 
         [Test]
+        public void EnemySpawnAuthoringValidatesBoundsIdentityAndPrefabWithoutChangingExistingRoomAssets()
+        {
+            var room = Object.Instantiate(AssetDatabase.LoadAssetAtPath<AuthoredRoom>("Assets/_Project/Prefabs/Rooms/Starting.prefab"));
+            try
+            {
+                var anchor = new GameObject("EnemySpawn").transform; anchor.SetParent(room.ContentRoot); anchor.position = new Vector3(0, 5, 0);
+                var data = new SerializedObject(room); var spawns = data.FindProperty("enemySpawns"); spawns.arraySize = 1;
+                var slot = spawns.GetArrayElementAtIndex(0);
+                slot.FindPropertyRelative("identity").intValue = 1;
+                slot.FindPropertyRelative("anchor").objectReferenceValue = anchor;
+                slot.FindPropertyRelative("prefab").objectReferenceValue = AssetDatabase.LoadAssetAtPath<DamageableTarget>("Assets/_Project/Prefabs/Combat/DamageableTestTarget.prefab");
+                data.ApplyModifiedPropertiesWithoutUndo();
+                Assert.DoesNotThrow(room.ValidateAuthoring);
+                anchor.position = new Vector3(100, 100, 0);
+                Assert.Throws<InvalidOperationException>(room.ValidateAuthoring);
+                anchor.position = new Vector3(0, 5, 0);
+                data.Update(); spawns.arraySize = 2; data.ApplyModifiedPropertiesWithoutUndo();
+                Assert.Throws<InvalidOperationException>(room.ValidateAuthoring);
+            }
+            finally { Object.DestroyImmediate(room.gameObject); }
+        }
+
+        [Test]
         public void SharedEntrySpawnReverseExitAndNonTriggerExitAreInvalid()
         {
             var room = Object.Instantiate(AssetDatabase.LoadAssetAtPath<AuthoredRoom>("Assets/_Project/Prefabs/Rooms/Starting.prefab"));

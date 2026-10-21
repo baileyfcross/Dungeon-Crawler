@@ -20,6 +20,20 @@ namespace SpaceCrawler.Gameplay
         private NetworkPlayerRig Local => session.Players[session.LocalPlayer - 1];
         private CoreVector Position => Local.State.Position;
 
+        public static EnemySpawn[] CreateEnemySpawns(AuthoredRoom room, int count = 1)
+        {
+            if (count < 1 || count > 32) throw new ArgumentOutOfRangeException(nameof(count));
+            var spawns = new EnemySpawn[count];
+            for (var i = 0; i < count; i++)
+            {
+                var anchor = new GameObject("EnemySpawn").transform;
+                anchor.SetParent(room.ContentRoot);
+                anchor.position = count == 1 ? new Vector3(0, 5, 0) : new Vector3((i % 8 - 3.5f) * 1.5f, 5 + i / 8 * 1.5f, 0);
+                spawns[i] = new EnemySpawn(i + 1, room.Targets[0], anchor);
+            }
+            return spawns;
+        }
+
         public void Bind(MultiplayerSession value, ApplicationFlow localFlow)
         { session = value; flow = localFlow; session.PollLocalDevices = false; StartCoroutine(Run()); }
         private void Move(CoreVector direction)
@@ -71,6 +85,8 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             yield return Until(() => session.RoomReady, "initial room handshake");
+            if (SessionDiagnostics.Option("--session-validation") == "enemies")
+            { yield return RunEnemies(); yield break; }
             if (SessionDiagnostics.Option("--session-validation") == "resume")
                 Check(session.LevelNumber == 2 && session.CurrentRoom.Value != 0, "cooperative checkpoint restored on both peers");
             Local.Input.HandleFocus(true); flow.TryRequest(ApplicationCommand.Resume); began = Time.realtimeSinceStartupAsDouble;
@@ -156,6 +172,45 @@ namespace SpaceCrawler.Gameplay
             yield return new WaitForSeconds(.3f);
             Record("10-PASS-terminal-remains-playable");
             if (!Host) { yield return new WaitForSeconds(1); Record("11-client-graceful-disconnect"); Application.Quit(0); }
+        }
+
+        private IEnumerator RunEnemies()
+        {
+            Local.Input.HandleFocus(true); flow.TryRequest(ApplicationCommand.Resume); began = Time.realtimeSinceStartupAsDouble;
+            var enemy = session.Rooms.CurrentRoom.Encounter.Enemies[0]; var identity = enemy.Identity;
+            Check(Host ? enemy.Simulation != null : enemy.Simulation == null && enemy.Target.Health == null, "enemy authority boundary");
+            yield return Walk(Host ? -1 : 1, 3.5f);
+            yield return At(2);
+            Aim(new CoreVector(0, 5) - Position); Attack(); Attack();
+            var expected = session.WeaponName == "weapon.knife" ? 50 : 60;
+            yield return Until(() => enemy.Target.DisplayedHealth == expected, "both player attacks on one enemy without duplicate damage");
+            Record("ENEMY-SHARED-DAMAGE-PASS");
+            yield return At(4);
+            if (Host)
+            {
+                while (enemy.Lifecycle == EnemyLifecycle.Alive)
+                { Attack(); yield return new WaitForSeconds(.7f); }
+            }
+            yield return Until(() => enemy.Lifecycle == EnemyLifecycle.Dead, "replicated enemy death");
+            Check(enemy.DeathEvents == 1 && enemy.Target.HitColliders.All(c => !c.enabled), "single death event and disabled hit shapes");
+            Record("ENEMY-DEATH-PASS");
+            yield return At(8);
+            // Lifecycle operation on the host-owned fixture, not an input or client authority bypass.
+            if (Host) Check(enemy.Simulation.Despawn(), "host fixture despawn");
+            yield return Until(() => enemy.Lifecycle == EnemyLifecycle.Despawned, "replicated despawn");
+            Check(!enemy.gameObject.activeSelf, "despawn removes presentation and collision");
+            Record("ENEMY-DESPAWN-PASS");
+            var before = session.CurrentRoom; var level = session.LevelNumber;
+            var choices = session.Run.Connections.Where(c => c.From.Equals(before)).ToArray();
+            yield return Walk(choices.Length == 1 ? 0 : -6, 13);
+            yield return Until(() => !session.CurrentRoom.Equals(before) && session.RoomReady, "room transition after enemy despawn");
+            var next = session.Rooms.CurrentRoom.Encounter.Enemies[0];
+            Check(next.Identity.Encounter != identity.Encounter && next.Target.DisplayedHealth == next.Target.InitialHealth,
+                "new room incarnation and fresh health");
+            Check(session.LevelNumber == level && session.Rooms.RoomContainer.childCount == 1, "one room after encounter cleanup");
+            Record("ENEMY-ROOM-CLEANUP-PASS");
+            Record("ENEMY-PASS");
+            if (!Host) { yield return new WaitForSeconds(1); Application.Quit(0); }
         }
     }
 }

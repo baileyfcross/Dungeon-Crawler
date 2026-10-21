@@ -14,8 +14,8 @@ namespace SpaceCrawler.Gameplay
     /// <summary>Two-player session adapter: sender-authenticated requests in, authoritative state out.</summary>
     public sealed class MultiplayerSession : MonoBehaviour
     {
-        private const string InputMessage = "session.input.v3", DescriptorMessage = "session.run.v3",
-            AckMessage = "session.room-ready.v3", StateMessage = "session.state.v3";
+        private const string InputMessage = "session.input.v4", DescriptorMessage = "session.run.v4",
+            AckMessage = "session.room-ready.v4", StateMessage = "session.state.v4";
         [SerializeField] private NetworkManager network;
         [SerializeField] private UnityTransport transport;
         [SerializeField] private NetworkPlayerRig playerPrefab;
@@ -66,6 +66,20 @@ namespace SpaceCrawler.Gameplay
         public string Failure { get; private set; }
         public string WeaponName => weapon?.Id ?? "Waiting";
         public event Action Changed;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        public int EnemyFixtureCount { get; set; }
+#endif
+
+        private void InitializeEncounter(bool authoritative)
+        {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            var spawns = EnemyFixtureCount > 0 || SessionDiagnostics.Option("--session-validation") == "enemies"
+                ? SessionValidationDriver.CreateEnemySpawns(rooms.CurrentRoom, EnemyFixtureCount > 0 ? EnemyFixtureCount : 1) : null;
+            rooms.CurrentRoom.InitializeEncounter(authoritative, epoch, spawns);
+#else
+            rooms.CurrentRoom.InitializeEncounter(authoritative, epoch);
+#endif
+        }
 
         public void Bind(SessionRole mode, ApplicationFlow localFlow, string address = "127.0.0.1", ushort port = 7777, ulong? hostSeed = null, bool useLevelSequence = false,
             RunCheckpoint checkpoint = null, Action<RunCheckpoint> save = null)
@@ -87,7 +101,7 @@ namespace SpaceCrawler.Gameplay
             network.NetworkConfig.AutoSpawnPlayerPrefabClientSide = false;
             network.NetworkConfig.PlayerPrefab = null;
             network.NetworkConfig.TickRate = 30;
-            network.NetworkConfig.ConnectionData = Encoding.ASCII.GetBytes("SpaceCrawlerSession3");
+            network.NetworkConfig.ConnectionData = Encoding.ASCII.GetBytes("SpaceCrawlerSession4");
             network.ConnectionApprovalCallback = Approve;
             network.OnClientConnectedCallback += Connected;
             network.OnClientDisconnectCallback += Disconnected;
@@ -118,7 +132,7 @@ namespace SpaceCrawler.Gameplay
             Debug.Log($"[Session] role={Mode} localPlayer={LocalPlayer} endpoint={address}:{port}; waiting for two-player room agreement", this);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             var validation = SessionDiagnostics.Option("--session-validation");
-            if (validation == "run" || validation == "checkpoint" || validation == "resume") gameObject.AddComponent<SessionValidationDriver>().Bind(this, flow);
+            if (validation == "run" || validation == "checkpoint" || validation == "resume" || validation == "enemies") gameObject.AddComponent<SessionValidationDriver>().Bind(this, flow);
 #endif
         }
 
@@ -168,7 +182,7 @@ namespace SpaceCrawler.Gameplay
 
         private void Approve(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
         {
-            response.Approved = Encoding.ASCII.GetString(request.Payload) == "SpaceCrawlerSession3"
+            response.Approved = Encoding.ASCII.GetString(request.Payload) == "SpaceCrawlerSession4"
                 && (request.ClientNetworkId == NetworkManager.ServerClientId || network.ConnectedClientsIds.Count < 2);
             response.CreatePlayerObject = false;
             response.Pending = false;
@@ -198,9 +212,10 @@ namespace SpaceCrawler.Gameplay
             var entryEpoch = epoch;
             rooms.LoadSharedRoom(Run, destination, Progression.ConnectionsFrom(destination),
                 (edge, collider, present) => { if (epoch == entryEpoch) ObserveExit(edge, collider, present); });
+            InitializeEncounter(true);
             for (var i = 0; i < 2; i++)
             {
-                players[i].Combat.RegisterRoomTargets(rooms.CurrentRoom.Targets, i == 0);
+                players[i].Combat.RegisterRoomTargets(rooms.CurrentRoom.CombatTargets, i == 0);
                 var anchor = i == 0 ? rooms.CurrentRoom.PlayerOneSpawnAnchor : rooms.CurrentRoom.PlayerTwoSpawnAnchor;
                 players[i].Motor.PlaceAt(anchor.position); players[i].Motor.Body.simulated = true;
             }
@@ -254,7 +269,7 @@ namespace SpaceCrawler.Gameplay
             {
                 reader.ReadValueSafe(out string json);
                 var incoming = JsonUtility.FromJson<RunSessionDescriptor>(json);
-                if (incoming.protocol != 3 || incoming.epoch <= epoch) return;
+                if (incoming.protocol != 4 || incoming.epoch <= epoch) return;
                 if (incoming.level < 1 || incoming.level > (incoming.levels ? RunSequence.LevelCount : 1))
                     throw new InvalidOperationException("Level descriptor mismatch.");
                 if (Run != null && (incoming.levels != descriptor.levels || incoming.runSeed != descriptor.runSeed
@@ -282,6 +297,7 @@ namespace SpaceCrawler.Gameplay
                 loadedRoom = new RunRoomId(incoming.destination);
                 var choices = Run.Connections.Where(c => c.From.Equals(loadedRoom)).ToArray();
                 rooms.LoadSharedRoom(Run, loadedRoom, choices, null);
+                InitializeEncounter(false);
                 foreach (var target in rooms.CurrentRoom.Targets) target.PresentAuthoritativeHealth(target.InitialHealth, target.InitialHealth);
                 SendJson(AckMessage, NetworkManager.ServerClientId, JsonUtility.ToJson(new RoomLoadAcknowledgment { epoch = epoch, room = loadedRoom.Value, level = LevelNumber, fingerprint = Fingerprint }));
                 Debug.Log($"[Session] client verified seed={Run.Seed} version={Run.GenerationVersion} fingerprint={Fingerprint} loaded={loadedRoom} epoch={epoch}", this);
@@ -355,18 +371,24 @@ namespace SpaceCrawler.Gameplay
                 LeftReady = choices.Count > 0 ? Readiness.Count(choices[0].To) : 0,
                 RightReady = choices.Count > 1 ? Readiness.Count(choices[1].To) : 0, Level = LevelNumber };
             lastHeader = header;
-            using (var writer = new FastBufferWriter(2048, Allocator.Temp))
+            using (var writer = new FastBufferWriter(8192, Allocator.Temp))
             {
                 writer.WriteValueSafe(header);
                 for (var i = 0; i < 2; i++) writer.WriteValueSafe(players[i].Capture(Authority.InputEnabled(i)));
                 writer.WriteValueSafe(rooms.CurrentRoom.Targets.Count);
                 foreach (var target in rooms.CurrentRoom.Targets)
                     writer.WriteValueSafe(new TargetStateSnapshot { Identity = target.Identity.Value, Current = target.Health.Current, Maximum = target.Health.Maximum });
+                writer.WriteValueSafe(rooms.CurrentRoom.Encounter.Enemies.Count);
+                foreach (var enemy in rooms.CurrentRoom.Encounter.Enemies)
+                    writer.WriteValueSafe(new EnemyStateSnapshot { Encounter = enemy.Identity.Encounter, Spawn = enemy.Identity.Spawn,
+                        Revision = enemy.Revision, Current = enemy.Target.Health.Current, Maximum = enemy.Target.Health.Maximum,
+                        Lifecycle = (int)enemy.Lifecycle, Aggro = enemy.AggroPlayer, Position = enemy.transform.position });
                 var projectiles = players.Sum(p => p.Combat.Projectiles.Count);
                 writer.WriteValueSafe(projectiles);
                 foreach (var rig in players) foreach (var projectile in rig.Combat.Projectiles)
                     writer.WriteValueSafe(new ProjectileStateSnapshot { Owner = rig.State.Player.Value, Sequence = projectile.Execution.Sequence, Position = projectile.Position });
-                network.CustomMessagingManager.SendNamedMessage(StateMessage, remoteSender.Value, writer, NetworkDelivery.UnreliableSequenced);
+                network.CustomMessagingManager.SendNamedMessage(StateMessage, remoteSender.Value, writer,
+                    writer.Length > 1200 ? NetworkDelivery.ReliableFragmentedSequenced : NetworkDelivery.UnreliableSequenced);
             }
             Changed?.Invoke();
         }
@@ -387,6 +409,19 @@ namespace SpaceCrawler.Gameplay
                     reader.ReadValueSafe(out TargetStateSnapshot target);
                     if (rooms.CurrentRoom.Targets[i].Identity.Value != target.Identity) throw new InvalidOperationException("Target identity mismatch.");
                     rooms.CurrentRoom.Targets[i].PresentAuthoritativeHealth(target.Current, target.Maximum);
+                }
+                reader.ReadValueSafe(out int enemyCount);
+                var enemies = rooms.CurrentRoom.Encounter.Enemies;
+                if (enemyCount != enemies.Count) throw new InvalidOperationException("Enemy descriptor count mismatch.");
+                for (var i = 0; i < enemyCount; i++)
+                {
+                    reader.ReadValueSafe(out EnemyStateSnapshot enemy);
+                    if (enemy.Encounter != epoch || enemy.Spawn != enemies[i].Identity.Spawn
+                        || float.IsNaN(enemy.Position.sqrMagnitude) || float.IsInfinity(enemy.Position.sqrMagnitude))
+                        throw new InvalidOperationException("Enemy identity or position mismatch.");
+                    enemies[i].ApplySnapshot(new EnemyIdentity(enemy.Encounter, enemy.Spawn), (EnemyLifecycle)enemy.Lifecycle,
+                        enemy.Current, enemy.Maximum, enemy.Revision, enemy.Aggro);
+                    enemies[i].transform.position = enemy.Position;
                 }
                 reader.ReadValueSafe(out int projectileCount);
                 if (projectileCount < 0 || projectileCount > 32) throw new InvalidOperationException("Invalid projectile count.");
@@ -458,6 +493,8 @@ namespace SpaceCrawler.Gameplay
             }
             if (rooms.CurrentRoom != null) foreach (var target in rooms.CurrentRoom.Targets)
                 text.AppendLine($"Target {target.Identity.Value}: health={(Mode == SessionRole.Host ? target.Health.Current : target.DisplayedHealth)}");
+            if (rooms.CurrentRoom?.Encounter != null) foreach (var enemy in rooms.CurrentRoom.Encounter.Enemies)
+                text.AppendLine($"Enemy {enemy.Identity.Encounter}:{enemy.Identity.Spawn}: health={enemy.Target.DisplayedHealth}; lifecycle={enemy.Lifecycle}; revision={enemy.Revision}; deaths={enemy.DeathEvents}; simulation={enemy.Simulation != null}");
             text.AppendLine($"Projectiles={(Mode == SessionRole.Host ? players.Sum(p => p.Combat.Projectiles.Count) : projectileViews.Count)}; localPaused={flow.State == ApplicationState.Paused}; camera={follower.transform.position}; rotation={follower.transform.eulerAngles}");
             if (Authority != null) text.AppendLine($"OwnershipRejected={Authority.RejectedOwnership}; staleRejected={Authority.RejectedStale}; inputTimeouts={Authority.TimedOut}");
             return text.ToString();

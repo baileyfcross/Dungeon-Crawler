@@ -12,6 +12,7 @@ namespace SpaceCrawler.Gameplay
         private readonly Dictionary<string, AuthoredRoom> prefabs = new Dictionary<string, AuthoredRoom>(StringComparer.Ordinal);
         private GameplaySession session;
         private ApplicationFlow flow;
+        private uint encounterIncarnation;
         public Transform RoomContainer => roomContainer;
         public AuthoredRoom CurrentRoom { get; private set; }
         public AuthoredRoom CurrentPrefab { get; private set; }
@@ -92,10 +93,11 @@ namespace SpaceCrawler.Gameplay
                 session.Combat.ClearRoom();
                 var node = session.Run.GetRoom(destination);
                 ReplaceRoom(session.Run, destination);
+                CurrentRoom.InitializeEncounter(true, checked(++encounterIncarnation));
                 var sourceRoom = CurrentRoom;
                 CurrentRoom.ConfigureExits(Progression.ConnectionsFrom(destination), Progression.Player, session.Motor.Body,
                     intent => ReferenceEquals(CurrentRoom, sourceRoom) && RequestExit(intent));
-                session.Combat.RegisterRoomTargets(CurrentRoom.Targets);
+                session.Combat.RegisterRoomTargets(CurrentRoom.CombatTargets);
                 session.Motor.PlaceAt(CurrentRoom.PlayerSpawnAnchor.position);
                 session.Motor.Body.simulated = true;
                 Physics2D.SyncTransforms();
@@ -129,6 +131,7 @@ namespace SpaceCrawler.Gameplay
         private void RemoveCurrentRoom()
         {
             if (CurrentRoom == null) return;
+            CurrentRoom.RetireEncounter();
             // Unity destroys at end-of-frame. Remove all physics/presentation immediately and
             // detach the retired object so RoomContainer contains only the new current instance.
             CurrentRoom.gameObject.SetActive(false);

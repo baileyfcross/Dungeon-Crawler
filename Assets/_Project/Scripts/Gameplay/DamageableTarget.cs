@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace SpaceCrawler.Gameplay
 {
-    /// <summary>Authoritative adapter for a primitive test target; not enemy behavior.</summary>
+    /// <summary>Shared hit-shape and health presentation adapter for targets and enemy actors.</summary>
     public sealed class DamageableTarget : MonoBehaviour
     {
         [SerializeField, Min(1)] private int identity = 1;
@@ -12,21 +12,54 @@ namespace SpaceCrawler.Gameplay
         [SerializeField] private Collider2D[] hitColliders;
         [SerializeField] private TargetPresentation presentation;
         public HealthSimulation Health { get; private set; }
-        public DamageableIdentity Identity => new DamageableIdentity(identity);
+        private EnemyActor enemy;
+        public EnemyActor Enemy => enemy;
+        public DamageableIdentity Identity => enemy != null ? enemy.Identity.Damageable : new DamageableIdentity(identity);
         public Collider2D[] HitColliders => hitColliders;
         public int DisplayedHealth { get; private set; }
         public int InitialHealth => initialHealth;
 
+        public void ValidateEnemyAuthoring()
+        {
+            if (initialHealth <= 0 || presentation == null || hitColliders == null || hitColliders.Length == 0)
+                throw new InvalidOperationException("An enemy requires health, presentation and hit shapes.");
+            var unique = new System.Collections.Generic.HashSet<Collider2D>();
+            foreach (var shape in hitColliders)
+                if (shape == null || !shape.transform.IsChildOf(transform) || !shape.enabled || !shape.isTrigger || !unique.Add(shape))
+                    throw new InvalidOperationException("Enemy hit shapes must be distinct enabled child triggers.");
+        }
+
         public void Initialize()
         {
+            if (enemy != null)
+            {
+                if (enemy.Simulation == null) throw new InvalidOperationException("A replica cannot initialize authoritative health.");
+                return;
+            }
             if (Health != null) throw new InvalidOperationException("Target is already initialized.");
             Health = new HealthSimulation(Identity, initialHealth);
             presentation.Present(Health);
             DisplayedHealth = Health.Current;
         }
 
-        public bool ReceiveDamage(DamageRequest request, out DamageResult result)
+        internal void BindEnemy(EnemyActor actor)
         {
+            if (enemy != null || Health != null) throw new InvalidOperationException("Target is already bound.");
+            enemy = actor; Health = actor.Simulation?.Health;
+        }
+
+        internal void PresentEnemyHealth()
+        { presentation.Present(Health); DisplayedHealth = Health.Current; }
+
+        public bool ReceiveDamage(DamageRequest request, out DamageResult result)
+            => ReceiveDamage(request, CombatFaction.Player, out result);
+
+        public bool ReceiveDamage(DamageRequest request, CombatFaction sourceFaction, out DamageResult result)
+        {
+            result = default;
+            if (enemy != null)
+                return enemy.Simulation != null && enemy.Simulation.TryApplyDamage(enemy.Identity, sourceFaction, request, out result);
+            if (sourceFaction != CombatFaction.Player) return false;
             if (Health == null) throw new InvalidOperationException("Initialize target health before resolving damage.");
             if (!Health.TryApplyDamage(request, out result)) return false;
             if (!Health.IsAlive)

@@ -15,6 +15,10 @@ namespace SpaceCrawler.Gameplay
         [SerializeField] private Transform playerOneSpawnAnchor, playerTwoSpawnAnchor;
         [SerializeField] private RoomExitTrigger singleExit, leftExit, rightExit;
         [SerializeField] private DamageableTarget[] targets;
+        [SerializeField] private EnemySpawn[] enemySpawns = Array.Empty<EnemySpawn>();
+        private IReadOnlyList<DamageableTarget> combatTargets;
+        public RoomEncounter Encounter { get; private set; }
+        public IReadOnlyList<DamageableTarget> CombatTargets => combatTargets ?? Targets;
         public Rect PlayableBounds => playableBounds;
         public Transform EntryAnchor => entryAnchor;
         public Transform PlayerSpawnAnchor => playerSpawnAnchor;
@@ -70,8 +74,33 @@ namespace SpaceCrawler.Gameplay
                     throw new InvalidOperationException("Invalid room target identity/content reference.");
                 foreach (var collider in target.HitColliders)
                 { RequireChild(collider); if (!shapes.Add(collider)) throw new InvalidOperationException("Duplicate target collider registration."); }
+                if (target.Identity.Value >= 0x40000000) throw new InvalidOperationException("Room targets use the non-enemy identity range.");
+            }
+            if (enemySpawns == null || enemySpawns.Length > 32) throw new InvalidOperationException("Invalid enemy spawn list.");
+            var spawnIds = new HashSet<int>();
+            foreach (var enemySpawn in enemySpawns)
+            {
+                if (enemySpawn == null || enemySpawn.Identity < 1 || enemySpawn.Identity > 32 || !spawnIds.Add(enemySpawn.Identity) || enemySpawn.Prefab == null)
+                    throw new InvalidOperationException("Invalid enemy spawn slot.");
+                enemySpawn.Prefab.ValidateEnemyAuthoring();
+                RequireChild(enemySpawn.Anchor);
+                if (!enemySpawn.Anchor.IsChildOf(contentRoot) || !Finite(enemySpawn.Anchor.position)
+                    || !safeBounds.Contains(transform.InverseTransformPoint(enemySpawn.Anchor.position)))
+                    throw new InvalidOperationException("Enemy spawn must be inside the room content bounds.");
             }
         }
+
+        public void InitializeEncounter(bool authoritative, uint incarnation, IReadOnlyList<EnemySpawn> spawns = null)
+        {
+            if (Encounter != null) throw new InvalidOperationException("Room encounter is already initialized.");
+            Encounter = new RoomEncounter(contentRoot, spawns ?? enemySpawns, authoritative, incarnation);
+            var combined = new List<DamageableTarget>(targets);
+            foreach (var enemy in Encounter.Enemies) combined.Add(enemy.Target);
+            combatTargets = combined.AsReadOnly();
+        }
+
+        public void RetireEncounter() => Encounter?.Retire();
+        private void OnDestroy() => RetireEncounter();
 
         private void RequireChild(Component component)
         {
