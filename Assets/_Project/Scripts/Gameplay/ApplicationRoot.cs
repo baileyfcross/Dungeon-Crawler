@@ -24,6 +24,8 @@ namespace SpaceCrawler.Gameplay
         private string saveNotice;
         private ProfileProgressStore progress;
         public ProfileProgress Profile => progress?.Profile;
+        public RunRewardSummary LastRunReward { get; private set; }
+        private readonly System.Collections.Generic.Dictionary<Guid,RunRewardSummary> runRewards = new System.Collections.Generic.Dictionary<Guid,RunRewardSummary>();
         private string profileFailure;
         public RunCheckpoint SavedCheckpoint { get; private set; }
 #if UNITY_EDITOR
@@ -114,7 +116,10 @@ namespace SpaceCrawler.Gameplay
         private void FinishRun(RunEndReceipt receipt)
         {
             if (progress == null) throw new IOException(profileFailure);
-            progress.EndRun(receipt); SavedCheckpoint = null; Flow.SetContinueAvailable(false);
+            var credited = progress.EndRunWithCredit(receipt);
+            if (!runRewards.ContainsKey(receipt.RunId)) runRewards[receipt.RunId] = new RunRewardSummary(receipt,credited);
+            LastRunReward = runRewards[receipt.RunId];
+            SavedCheckpoint = null; Flow.SetContinueAvailable(false);
         }
 
         private void SaveUnfinishedRun()
@@ -202,6 +207,7 @@ namespace SpaceCrawler.Gameplay
                 else { CurrentGameplay = null; pendingSessionRole = SessionRole.None; }
                 CurrentScreen = Instantiate(screenPrefab);
                 CurrentScreen.Bind(Flow);
+                CurrentScreen.BindRewards(id => runRewards.TryGetValue(id,out var summary) ? summary : null);
                 CurrentScreen.BindContinue(() => RequestContinue());
                 CurrentScreen.BindLocalSessionControls(mode => StartMultiplayerSession(mode));
                 if (CurrentGameplay != null)
@@ -227,6 +233,8 @@ namespace SpaceCrawler.Gameplay
                     else StartMultiplayerSession(automatic == "host" ? SessionRole.Host : SessionRole.Client);
                 }
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if (destination == ApplicationState.MainMenu && SessionDiagnostics.Option("--completion-validation") != null
+                    && GetComponent<CompletionValidationDriver>() == null) gameObject.AddComponent<CompletionValidationDriver>().Bind(this);
                 if (destination == ApplicationState.MainMenu && SessionDiagnostics.Option("--save-validation") != null
                     && GetComponent<SaveValidationDriver>() == null) gameObject.AddComponent<SaveValidationDriver>().Bind(this);
 #endif
@@ -252,6 +260,7 @@ namespace SpaceCrawler.Gameplay
                 {
                     await Awaitable.FromAsyncOperation(SceneManager.LoadSceneAsync(mainMenuScenePath), lifetime);
                     CurrentScreen = Instantiate(mainMenuScreen); CurrentScreen.Bind(Flow);
+                CurrentScreen.BindRewards(id => runRewards.TryGetValue(id,out var summary) ? summary : null);
                     CurrentScreen.BindContinue(() => RequestContinue()); CurrentScreen.BindLocalSessionControls(mode => StartMultiplayerSession(mode));
                     RefreshCheckpoint(); CurrentScreen.ShowSaveStatus(saveNotice ?? "The requested run could not be loaded. The previous checkpoint is retained.");
                 }

@@ -49,7 +49,7 @@ namespace SpaceCrawler.Gameplay
 
         private void ApplyGate(ApplicationState state)
         {
-            var active = focused && roomAvailable && state == ApplicationState.Gameplay;
+            var active = focused && roomAvailable && state == ApplicationState.Gameplay && !flow.RunEndPending;
             commands.SetInputActive(active);
             if (active)
             {

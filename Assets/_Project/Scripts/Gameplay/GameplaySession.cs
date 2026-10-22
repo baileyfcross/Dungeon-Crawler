@@ -40,6 +40,9 @@ namespace SpaceCrawler.Gameplay
         public RunWorldPersistence Persistence { get; private set; }
         private long savedAttackCount;
         public RunLife Life { get; private set; }
+        public RunCompletion Completion { get; private set; }
+        public RunEndReceipt Outcome { get; private set; }
+        public string CompletionHint => Completion?.Available == true ? "RUN EXIT — approach the gold marker and press E / gamepad South to finish. You can still backtrack." : string.Empty;
         public string HealthFailure { get; private set; }
         public event Action HealthChanged;
         public bool PollLocalDevices { get; set; } = true;
@@ -68,11 +71,12 @@ namespace SpaceCrawler.Gameplay
             Run = Sequence?.CurrentGraph ?? new RunGenerator().Generate(seed, generation.CreateConfiguration());
             Simulation = new PlayerSimulation(identity, movementSpeed);
             Simulation.SetLifeActive(Life[0].State == PlayerLifeState.Alive);
+            Completion = new RunCompletion(Life);
             Life.Changed += ApplyLife;
             motor.Bind(Simulation);
             follower.Bind(motor.transform);
             combat.Bind(Simulation, startingWeapon != null ? startingWeapon.CreateConfiguration() : null);
-            input.Bind(Simulation, flow, combat);
+            input.Bind(new LocalPlayerCommands(Simulation,combat,Interact),flow);
             if (Debug.isDebugBuild)
                 Debug.Log($"[RunGeneration] seed={Run.Seed} version={Run.GenerationVersion} nodes={Run.Nodes.Count} connections={Run.Connections.Count} start={Run.StartRoomId} terminal={Run.TerminalRoomId}", this);
             // The original isolated control/combat test prefab intentionally has no loader.
@@ -112,7 +116,7 @@ namespace SpaceCrawler.Gameplay
         private void ApplyLife()
         {
             Simulation.SetLifeActive(Life[0].State == PlayerLifeState.Alive && !Life.Ended);
-            if (!Simulation.CanAct) Motor.Stop();
+            if (!Simulation.CanAct) { Motor.Stop(); combat.ClearRoom(); }
             try { if (Life.Ended) FinishRun(); else SaveCurrent(); HealthFailure = null; }
             catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
             { HealthFailure = "Progress could not be saved. Check storage availability. Retrying run completion."; }
@@ -121,14 +125,26 @@ namespace SpaceCrawler.Gameplay
         private void FinishRun()
         {
             if (runFinished) return;
-            flow.BeginRunEnd(); endRun?.Invoke(Life.CreateReceipt(RunEndReason.Loss));
+            flow.BeginRunEnd();
+            Outcome = Outcome ?? Life.CreateReceipt(Life.EndReason.Value);
+            combat.ClearRoom(); endRun?.Invoke(Outcome);
             runFinished = true;
-            flow.TryRequest(ApplicationCommand.EndRun);
+            flow.TryRequest(Outcome.Reason == RunEndReason.Completed ? ApplicationCommand.CompleteRun : ApplicationCommand.EndRun);
         }
 
+        public bool Interact(PlayerIdentity player,bool held)
+        { ObserveCompletion(); return Simulation.IsActive && Completion.Interact(player,held); }
+        private void ObserveCompletion()
+        {
+            if (Completion == null || rooms?.CurrentRoom == null) return;
+            var anchor = rooms.CurrentRoom.RunExitAnchor; var exit = anchor != null ? (Vector2)anchor.position : Vector2.zero;
+            Completion.Observe(LevelNumber,Sequence != null,rooms.Progression,new System.Numerics.Vector2(exit.x,exit.y),
+                new[] { new System.Numerics.Vector2(motor.Body.position.x,motor.Body.position.y) },new[] { Simulation.IsActive && !flow.RunEndPending });
+        }
         private void Update()
         {
             if (Life?.Ended == true && !runFinished) ApplyLife();
+            ObserveCompletion();
             if (PollLocalDevices) input.SampleMovement();
             if (Persistence != null && Persistence.AutosaveDue(Time.unscaledTime)) TrySave();
         }

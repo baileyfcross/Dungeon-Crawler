@@ -8,7 +8,7 @@ namespace SpaceCrawler.Gameplay
 
     [Serializable] public sealed class RunSessionDescriptor
     {
-        public int protocol = 7, generationVersion, currentRoom, destination, state;
+        public int protocol = 8, generationVersion, currentRoom, destination, state;
         public string runId;
         public int level = 1, sequenceVersion;
         public bool levels;
@@ -36,7 +36,8 @@ namespace SpaceCrawler.Gameplay
         public uint Epoch;
         public ulong Tick;
         public int CurrentRoom, State, RoomsEntered, LeftReady, RightReady, ThirdReady, FourthReady, Level;
-        public bool Running;
+        public bool Running, Ending, CompletionAvailable;
+        public int CompletionConfirmations;
         public long RunXp;
     }
     public struct PlayerStateSnapshot : INetworkSerializeByMemcpy

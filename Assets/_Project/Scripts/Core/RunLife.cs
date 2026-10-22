@@ -70,6 +70,7 @@ namespace SpaceCrawler.Core
         public Guid RunId { get; }
         public long RunXp { get; private set; }
         public bool Ended { get; private set; }
+        public RunEndReason? EndReason { get; private set; }
         public int Count => players.Length;
         public PlayerVitals this[int index] => players[index];
         public float ReviveProgress(int rescuer) => progress[rescuer];
@@ -80,6 +81,7 @@ namespace SpaceCrawler.Core
             players = new List<PlayerVitals>(snapshot.Players).ToArray(); profiles = new List<Guid>(snapshot.Profiles).ToArray();
             classes = new List<string>(snapshot.Classes).ToArray(); held = new bool[Count]; requireRelease = new bool[Count]; progress = new float[Count];
             Ended = Array.TrueForAll(players, p => p.State != PlayerLifeState.Alive);
+            if (Ended) EndReason = RunEndReason.Loss;
         }
         public void BindProfile(int slot, Guid profile)
         {
@@ -97,6 +99,7 @@ namespace SpaceCrawler.Core
             CancelRevive(slot, true);
             if (hp == 0) CancelRevive(Count == 2 ? 1 - slot : slot, true);
             Ended = Array.TrueForAll(players, p => p.State != PlayerLifeState.Alive);
+            if (Ended) EndReason = RunEndReason.Loss;
             if (Ended) CancelAllRevives();
             Changed?.Invoke(); return true;
         }
@@ -129,7 +132,12 @@ namespace SpaceCrawler.Core
                 CancelRevive(i, true); Changed?.Invoke();
             }
         }
-        private void CancelRevive(int i, bool release) { held[i] = false; progress[i] = 0; if (release) requireRelease[i] = true; }
+        private void CancelRevive(int i, bool release)
+        {
+            // Only a held/interrupted interaction needs a release. A fresh press after damage remains valid.
+            if (release && (held[i] || progress[i] > 0)) requireRelease[i] = true;
+            held[i] = false; progress[i] = 0;
+        }
         public void CancelAllRevives() { for (var i = 0; i < Count; i++) CancelRevive(i, true); }
         // No gameplay source calls this until XP earning rules are approved.
         public bool TryAwardRunXp(long amount)
@@ -137,10 +145,15 @@ namespace SpaceCrawler.Core
             if (Ended || amount <= 0 || amount > long.MaxValue / 100 - RunXp) return false;
             RunXp += amount; Changed?.Invoke(); return true;
         }
+        public bool TryComplete()
+        {
+            if (Ended || !Array.TrueForAll(players,p => p.State == PlayerLifeState.Alive)) return false;
+            Ended = true; EndReason = RunEndReason.Completed; CancelAllRevives(); Changed?.Invoke(); return true;
+        }
         public RunLifeSnapshot Capture() => new RunLifeSnapshot(RunId, RunXp, players, profiles, classes);
         public RunEndReceipt CreateReceipt(RunEndReason reason)
         {
-            if (!Ended && reason == RunEndReason.Loss) throw new InvalidOperationException("A living party has not lost its run.");
+            if (!Ended || EndReason != reason) throw new InvalidOperationException("A receipt requires the matching authoritative run outcome.");
             return new RunEndReceipt(RunId, RunXp, reason, profiles);
         }
     }

@@ -29,6 +29,25 @@ namespace SpaceCrawler.Gameplay
         private VisualElement deathOverlay;
         private ProgressBar healthBar;
         private Label healthStatus;
+        private VisualElement completionOverlay;
+        private Button completionReturn;
+        private Func<Guid,RunRewardSummary> reward;
+        public void BindRewards(Func<Guid,RunRewardSummary> source) => reward = source;
+        private void Update()
+        {
+            var hint = View.Q<Label>("completion-hint");
+            if (hint != null) hint.text = session != null ? session.CompletionHint : multiplayer?.CompletionHint ?? string.Empty;
+            if (flow?.State != ApplicationState.Completed) return;
+            var outcome = session?.Outcome ?? multiplayer?.Outcome;
+            var summary = outcome != null ? reward?.Invoke(outcome.RunId) : null;
+            var label = View.Q<Label>("completion-rewards");
+            if (label != null) label.text = summary == null ? "Run completed." : $"Run XP: {summary.Receipt.RunXp}\nProfile XP awarded: {summary.ProfileXp}\nFractional profile XP carries forward.";
+            bool ready = multiplayer == null || multiplayer.CanLeaveCompletion;
+            if (completionReturn != null && completionReturn.enabledSelf != ready)
+            { completionReturn.SetEnabled(ready); if (ready) completionReturn.Focus(); }
+            var pending = View.Q<Label>("completion-status");
+            if (pending != null) pending.text = ready ? "Progress saved. This run can no longer be continued." : "Waiting for your teammate to save their reward...";
+        }
 
         public void SetProfileAvailable(bool available, string message)
         {
@@ -149,6 +168,7 @@ namespace SpaceCrawler.Gameplay
             if (healthStatus == null) return;
             var failure = session != null ? session.HealthFailure : multiplayer?.HealthFailure;
             if (!string.IsNullOrEmpty(failure)) { healthStatus.text = failure; return; }
+            if (flow.RunEndPending) { healthStatus.text = "Finalizing run and saving profile rewards..."; return; }
             if (multiplayer == null) { healthStatus.text = $"Run XP  {session?.Life.RunXp ?? 0}"; return; }
             var local = multiplayer.LocalPlayer - 1; var other = 1 - local;
             var progress = multiplayer.Players[vitals.State == PlayerLifeState.Downed ? other : local].ReviveProgress;
@@ -172,6 +192,8 @@ namespace SpaceCrawler.Gameplay
             hud = View.Q("gameplay-hud");
             pauseOverlay = View.Q("pause-overlay");
             deathOverlay = View.Q("death-overlay"); deathReturn = View.Q<Button>("death-return-to-menu");
+            completionOverlay = View.Q("completion-overlay"); completionReturn = View.Q<Button>("completion-return-to-menu");
+            if (completionReturn != null) completionReturn.clicked += RequestReturn;
             healthBar = View.Q<ProgressBar>("player-health"); healthStatus = View.Q<Label>("health-status");
             if (deathReturn != null) deathReturn.clicked += RequestReturn;
             if (newGame != null) newGame.clicked += RequestNewGame;
@@ -188,7 +210,8 @@ namespace SpaceCrawler.Gameplay
         }
 
         private void RequestNewGame() => flow.TryRequest(ApplicationCommand.NewGame);
-        private void RequestReturn() => flow.TryRequest(ApplicationCommand.ReturnToMainMenu);
+        private void RequestReturn()
+        { if (flow.State != ApplicationState.Completed || multiplayer == null || multiplayer.CanLeaveCompletion) flow.TryRequest(ApplicationCommand.ReturnToMainMenu); }
         private void RequestExit() => flow.TryRequest(ApplicationCommand.Exit);
         private void RequestPause() => flow.TryRequest(ApplicationCommand.Pause);
         private void RequestResume() => flow.TryRequest(ApplicationCommand.Resume);
@@ -212,6 +235,8 @@ namespace SpaceCrawler.Gameplay
             resume?.SetEnabled(flow.CanRequest(ApplicationCommand.Resume));
             pauseReturn?.SetEnabled(flow.CanRequest(ApplicationCommand.ReturnToMainMenu));
             deathReturn?.SetEnabled(state == ApplicationState.Death && flow.CanRequest(ApplicationCommand.ReturnToMainMenu));
+            if (completionOverlay != null) completionOverlay.style.display = state == ApplicationState.Completed ? DisplayStyle.Flex : DisplayStyle.None;
+            if (state == ApplicationState.Completed && completionReturn != null) completionReturn.schedule.Execute(() => completionReturn.Focus());
             if (deathOverlay != null) deathOverlay.style.display = state == ApplicationState.Death ? DisplayStyle.Flex : DisplayStyle.None;
             if (hud != null) hud.style.display = state == ApplicationState.Gameplay ? DisplayStyle.Flex : DisplayStyle.None;
             if (pauseOverlay != null) pauseOverlay.style.display = state == ApplicationState.Paused ? DisplayStyle.Flex : DisplayStyle.None;
@@ -245,6 +270,7 @@ namespace SpaceCrawler.Gameplay
             if (resume != null) resume.clicked -= RequestResume;
             if (pauseReturn != null) pauseReturn.clicked -= RequestReturn;
             if (deathReturn != null) deathReturn.clicked -= RequestReturn;
+            if (completionReturn != null) completionReturn.clicked -= RequestReturn;
         }
     }
 }

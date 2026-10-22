@@ -18,6 +18,13 @@ namespace SpaceCrawler.Gameplay
         public IReadOnlyList<RoomExitTrigger> CardinalExits => cardinalExits;
         [SerializeField] private DamageableTarget[] targets;
         [SerializeField] private EnemySpawn[] enemySpawns = Array.Empty<EnemySpawn>();
+        [SerializeField] private Transform runExitAnchor;
+        public Transform RunExitAnchor => runExitAnchor;
+        public void ShowRunExit(bool available)
+        {
+            if (runExitAnchor == null) { if (available) throw new InvalidOperationException("An authored run exit is required."); return; }
+            runExitAnchor.gameObject.SetActive(available);
+        }
         private IReadOnlyList<DamageableTarget> combatTargets;
         public RoomEncounter Encounter { get; private set; }
         public IReadOnlyList<DamageableTarget> CombatTargets => combatTargets ?? Targets;

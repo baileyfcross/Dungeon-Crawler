@@ -102,7 +102,8 @@ namespace SpaceCrawler.Core
         private string ReceiptPath(Guid run) => ReceiptPath(directory, run);
         public bool HasEnded(Guid run) => File.Exists(ReceiptPath(run));
 
-        public void EndRun(RunEndReceipt receipt)
+        public void EndRun(RunEndReceipt receipt) => EndRunWithCredit(receipt);
+        public long EndRunWithCredit(RunEndReceipt receipt)
         {
             using (Own())
             {
@@ -115,7 +116,7 @@ namespace SpaceCrawler.Core
                         throw new InvalidDataException("Conflicting run receipt.");
                 }
                 else WriteReceipt(receipt);
-                Credit(receipt);
+                var before = Profile.Experience; Credit(receipt); return Profile.Experience-before;
             }
         }
         private void Recover()

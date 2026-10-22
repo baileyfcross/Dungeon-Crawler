@@ -87,6 +87,7 @@ namespace SpaceCrawler.Gameplay
                 AddCombatFixtureToCurrentRoom();
 #endif
             CurrentRoom.ValidateAuthoring();
+            CurrentRoom.ShowRunExit(false);
         }
 
         private void ApplyApplicationState(ApplicationState state) => Progression.SetGameplayActive(state == ApplicationState.Gameplay);
@@ -138,6 +139,7 @@ namespace SpaceCrawler.Gameplay
                     EnterRoom(session.Run.StartRoomId);
                     return;
                 }
+                CurrentRoom.ShowRunExit(session.Sequence != null && session.LevelNumber == RunSequence.LevelCount && Progression.IsTerminal);
                 session.CommitCheckpoint(Progression);
                 session.Input.SetRoomAvailable(true);
                 if (Debug.isDebugBuild)

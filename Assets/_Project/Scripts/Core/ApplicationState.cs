@@ -8,6 +8,7 @@ namespace SpaceCrawler.Core
         Gameplay,
         Exiting,
         Paused,
-        Death
+        Death,
+        Completed
     }
 }

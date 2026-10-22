@@ -9,6 +9,7 @@ namespace SpaceCrawler.Core
         Pause,
         Resume,
         Continue,
-        EndRun
+        EndRun,
+        CompleteRun
     }
 }
