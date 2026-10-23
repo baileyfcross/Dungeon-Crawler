@@ -21,17 +21,17 @@ namespace SpaceCrawler.Gameplay
         private void Submit(string name)
         {var button=root.CurrentScreen.View.Q<Button>(name);Check(button!=null && button.enabledInHierarchy,name+" available");using(var e=NavigationSubmitEvent.GetPooled()){e.target=button;button.SendEvent(e);}}
         public void Bind(ApplicationRoot application){root=application;StartCoroutine(Run());}
-        private IEnumerator CapturePanel(string path,int width,int height)
+        internal static IEnumerator CapturePanel(ApplicationScreen screen,string path,int width,int height)
         {
-            var settings=root.CurrentScreen.GetComponent<UIDocument>().panelSettings;
+            var settings=screen.GetComponent<UIDocument>().panelSettings;
             var previous=settings.targetTexture;var target=RenderTexture.GetTemporary(width,height,0,RenderTextureFormat.ARGB32);
             Texture2D pixels=null;var active=RenderTexture.active;
             try
             {
                 settings.targetTexture=target;
-                for(int frame=0;frame<12;frame++){root.CurrentScreen.View.MarkDirtyRepaint();yield return null;}
-                var bounds=root.CurrentScreen.View.worldBound;
-                root.CurrentScreen.View.Query<Button>().ForEach(button=>
+                for(int frame=0;frame<12;frame++){screen.View.MarkDirtyRepaint();yield return null;}
+                var bounds=screen.View.worldBound;
+                screen.View.Query<Button>().ForEach(button=>
                 {
                     var box=button.worldBound;
                     if(box.width<1 || box.height<1)return;
@@ -55,7 +55,7 @@ namespace SpaceCrawler.Gameplay
                 {
                     // Offscreen panels let hidden validation windows produce inspectable UI evidence.
                     foreach(var size in new[]{new Vector2Int(1280,720),new Vector2Int(1920,1080),new Vector2Int(1024,768),new Vector2Int(1280,800)})
-                        yield return CapturePanel(capture+$".{size.x}x{size.y}.png",size.x,size.y);
+                        yield return CapturePanel(root.CurrentScreen,capture+$".{size.x}x{size.y}.png",size.x,size.y);
                 }
                 Check(root.CurrentScreen.View.Q("local-session-controls").resolvedStyle.display==DisplayStyle.None,"localhost controls hidden without opt-in");
                 if(mode=="presentation")
@@ -64,9 +64,9 @@ namespace SpaceCrawler.Gameplay
                     root.CurrentGameplay.PollLocalDevices=false;root.CurrentGameplay.Input.HandleFocus(true);root.Flow.TryRequest(ApplicationCommand.Resume);
                     yield return null;
                     Check(!root.CurrentScreen.View.Q<Label>("run-readout").text.Contains("Seed"),"normal HUD omits generation diagnostics");
-                    if(capture!=null)yield return CapturePanel(capture+".gameplay.png",1280,720);
+                    if(capture!=null)yield return CapturePanel(root.CurrentScreen,capture+".gameplay.png",1280,720);
                     root.Flow.TryRequest(ApplicationCommand.Pause);yield return null;
-                    if(capture!=null)yield return CapturePanel(capture+".pause.png",1280,720);
+                    if(capture!=null)yield return CapturePanel(root.CurrentScreen,capture+".pause.png",1280,720);
                     root.Flow.TryRequest(ApplicationCommand.ReturnToMainMenu);yield return Until(()=>root.Flow.State==ApplicationState.MainMenu,"return from presentation checks");
                     Debug.Log("[SteamSessionValidation] PRESENTATION-PASS");Application.Quit(0);yield break;
                 }

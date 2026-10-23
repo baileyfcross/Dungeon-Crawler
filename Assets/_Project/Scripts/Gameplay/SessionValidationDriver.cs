@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using SpaceCrawler.Core;
 using UnityEngine;
+using UnityEngine.UIElements;
 using CoreVector = System.Numerics.Vector2;
 
 namespace SpaceCrawler.Gameplay
@@ -77,6 +78,7 @@ namespace SpaceCrawler.Gameplay
         }
         private void Update()
         {
+            if(SessionDiagnostics.Option("--session-validation")=="audio")return;
             if (session == null || session.Run == null || session.WeaponName != "weapon.blaster" || session.Players[1] == null) return;
             if (Host && !cleanupShot && session.CurrentRoom.Value == 0 && Time.realtimeSinceStartupAsDouble - began > 9
                 && session.Players[1].State.Position.X < -4.5f && session.Players[1].State.Position.Y > 11.25f)
@@ -87,6 +89,7 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             yield return Until(() => session.RoomReady, "initial room handshake");
+            if(SessionDiagnostics.Option("--session-validation")=="audio"){yield return RunAudio();yield break;}
             if (SessionDiagnostics.Option("--session-validation") == "traversal" || SessionDiagnostics.Option("--session-validation") == "traversal-resume")
             { yield return RunTraversal(); yield break; }
             if (SessionDiagnostics.Option("--session-validation") == "melee")
@@ -351,6 +354,40 @@ namespace SpaceCrawler.Gameplay
                 { var next = new List<RoomConnection>(path) { edge }; queue.Enqueue(next); }
             }
             return route;
+        }
+
+        private IEnumerator RunAudio()
+        {
+            Local.Input.HandleFocus(true);flow.TryRequest(ApplicationCommand.Resume);began=Time.realtimeSinceStartupAsDouble;
+            var audio=GameAudio.Current;var root=audio.GetComponent<ApplicationRoot>();
+            var cue=session.WeaponName=="weapon.knife"?SoundCue.KnifeSwing:SoundCue.BlasterShot;
+            int shots=audio.EmittedCount(cue);
+            yield return At(.3);
+            if(!Host)
+            {
+                flow.TryRequest(ApplicationCommand.Pause);
+                var button=root.CurrentScreen.View.Q<Button>("options");
+                using(var evt=NavigationSubmitEvent.GetPooled()){evt.target=button;button.SendEvent(evt);}
+                Check(root.CurrentScreen.GetComponent<AudioOptionsPanel>().IsOpen,"client Options open");
+            }
+            yield return At(1);
+            if(Host){Aim(CoreVector.UnitX);Attack();Attack();}
+            yield return Until(()=>audio.EmittedCount(cue)==shots+1,"one accepted host attack sound per process");
+            yield return At(2);
+            if(Host)session.DamagePlayer(new PlayerIdentity(1),Guid.NewGuid(),10);
+            yield return Until(()=>session.Vitals(0).Current==90,"host simulation and health replication continue during client Options");
+            yield return At(3);
+            if(!Host)
+            {
+                Check(flow.State==ApplicationState.Paused,"Options are local pause");root.CurrentScreen.GetComponent<AudioOptionsPanel>().ConsumePause();
+                Check(flow.State==ApplicationState.Paused,"closing Options cannot resume");flow.TryRequest(ApplicationCommand.Resume);
+            }
+            yield return At(4);
+            if(!Host){Aim(-CoreVector.UnitX);Attack();Attack();}
+            yield return Until(()=>audio.EmittedCount(cue)==shots+2,"one accepted client attack sound per process");
+            yield return At(6);Check(audio.EmittedCount(cue)==shots+2,"repeated snapshots cannot replay attack sounds");
+            Check(audio.VoiceCount==GameAudio.VoiceLimit,"bounded per-process audio pool");Record("AUDIO-PASS");
+            if(!Host){yield return new WaitForSeconds(1);Application.Quit(0);}
         }
 
         private IEnumerator RunEnemies()

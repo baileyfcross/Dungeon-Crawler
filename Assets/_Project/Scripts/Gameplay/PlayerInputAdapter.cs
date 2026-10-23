@@ -21,6 +21,8 @@ namespace SpaceCrawler.Gameplay
         private IPlayerCommands commands;
         private ApplicationFlow flow;
         private Func<Vector2, bool> pointerOverUi;
+        private Func<bool> pauseInterceptor;
+        public void SetPauseInterceptor(Func<bool> interceptor)=>pauseInterceptor=interceptor;
         private bool attackNeedsRelease;
         private bool roomAvailable = true;
         public bool GameplayInputEnabled => commands != null && commands.InputActive;
@@ -78,6 +80,7 @@ namespace SpaceCrawler.Gameplay
             if (commands == null) return;
             if (pause.enabled && pause.WasPressedThisFrame())
             {
+                if(pauseInterceptor?.Invoke()==true)return;
                 flow.TryRequest(flow.State == ApplicationState.Paused ? ApplicationCommand.Resume : ApplicationCommand.Pause);
                 return;
             }

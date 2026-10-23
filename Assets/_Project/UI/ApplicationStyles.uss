@@ -48,3 +48,13 @@ Button:disabled { background-color: rgb(17, 28, 41); border-color: rgb(34, 49, 6
 .gameplay-hud .health-damaged .unity-progress-bar__progress { background-color: rgb(156, 57, 41); }
 .gameplay-hud .teammate-health .unity-progress-bar__progress { background-color: rgb(101, 71, 128); }
 .pause-card { max-width: 92%; }
+#options-overlay .unity-base-field__label { color: rgb(228, 239, 245); }
+#options-overlay .unity-base-text-field__input {
+    color: rgb(228, 239, 245);
+    background-color: rgb(20, 36, 51);
+    border-color: rgb(53, 78, 97);
+    border-width: 1px;
+}
+#options-overlay .unity-text-field__input { color: rgb(228, 239, 245); background-color: rgb(20, 36, 51); }
+#options-overlay .unity-base-slider__tracker { background-color: rgb(53, 78, 97); }
+#options-overlay .unity-base-slider__dragger { background-color: rgb(96, 221, 218); }

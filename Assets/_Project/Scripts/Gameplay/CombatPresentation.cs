@@ -20,8 +20,9 @@ namespace SpaceCrawler.Gameplay
         public void Present(AttackExecution execution)
             => Present(execution.Weapon, new Vector2(execution.Origin.X, execution.Origin.Y), new Vector2(execution.AimDirection.X, execution.AimDirection.Y));
 
-        public void Present(WeaponConfiguration weapon, Vector2 acceptedOrigin, Vector2 acceptedAim)
+        public void Present(WeaponConfiguration weapon, Vector2 acceptedOrigin, Vector2 acceptedAim,bool audible=true)
         {
+            if(audible)GameAudio.Emit(weapon.Kind==AttackKind.Melee?SoundCue.KnifeSwing:SoundCue.BlasterShot);
             if (weapon.Kind != AttackKind.Melee) return;
             const int segments = 24;
             var origin = (Vector3)acceptedOrigin;

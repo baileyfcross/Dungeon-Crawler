@@ -62,6 +62,7 @@ namespace SpaceCrawler.Tests.PlayMode
             {
                 Assert.That(client.Players[0], Is.Null);
                 screen = Object.Instantiate(AssetDatabase.LoadAssetAtPath<ApplicationScreen>("Assets/_Project/Prefabs/UI/GameplayScreen.prefab"));
+                screen.gameObject.AddComponent<GameAudio>().Bind(Path.Combine("Logs/Validation/Audio/Network",Guid.NewGuid().ToString("N")));
                 screen.Bind(clientFlow); screen.BindMultiplayer(client);
                 Assert.That(screen.View.Q<Label>("health-status").text, Does.Contain("Waiting"));
                 Assert.That(screen.View.Q<ProgressBar>("player-health").style.display.value, Is.EqualTo(DisplayStyle.None));
@@ -74,6 +75,19 @@ namespace SpaceCrawler.Tests.PlayMode
         {
             host.Players[0].Motor.PlaceAt(new Vector2(-.5f, 3)); host.Players[1].Motor.PlaceAt(new Vector2(.5f, 3));
             foreach (var rig in host.Players) rig.Motor.CaptureState(); Physics2D.SyncTransforms();
+        }
+        [UnityTest]
+        public IEnumerator ClientOptionsKeepTheHostSimulationRunningAndRestorePauseFocus()
+        {
+            yield return StartPair(withScreen:true);PlaceTogether();clientFlow.TryRequest(ApplicationCommand.Pause);yield return null;
+            var button=screen.View.Q<Button>("options");Assert.That(button.enabledInHierarchy,Is.True);
+            using(var submit=NavigationSubmitEvent.GetPooled()){submit.target=button;button.SendEvent(submit);}
+            yield return null;Assert.That(screen.GetComponent<AudioOptionsPanel>().IsOpen,Is.True);
+            Assert.That(clientFlow.State,Is.EqualTo(ApplicationState.Paused));Assert.That(hostFlow.State,Is.EqualTo(ApplicationState.Gameplay));
+            int before=client.Vitals(0).Current;host.DamagePlayer(new PlayerIdentity(1),Guid.NewGuid(),10);
+            yield return Until(()=>client.Vitals(0).Current==before-10);
+            Assert.That(screen.GetComponent<AudioOptionsPanel>().ConsumePause(),Is.True);yield return null;
+            Assert.That(clientFlow.State,Is.EqualTo(ApplicationState.Paused));Assert.That(screen.View.Q<Button>("resume").enabledInHierarchy,Is.True);
         }
         [UnityTest]
         public IEnumerator ClientHealthScreenWaitsForTheHandshakeBeforeReadingPlayerState()

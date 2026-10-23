@@ -45,6 +45,7 @@ namespace SpaceCrawler.Gameplay
         public string CompletionHint => Completion?.Available == true ? "RUN EXIT — approach the gold marker and press E / gamepad South to finish. You can still backtrack." : string.Empty;
         public string HealthFailure { get; private set; }
         public event Action HealthChanged;
+        private readonly PlayerSoundState soundState=new PlayerSoundState();
         public bool PollLocalDevices { get; set; } = true;
 
         public void Bind(PlayerIdentity identity, ApplicationFlow flow, ulong? runSeed = null, bool useLevelSequence = false,
@@ -59,6 +60,7 @@ namespace SpaceCrawler.Gameplay
             commitCheckpoint = save; this.flow = flow; endRun = finish;
             Persistence = new RunWorldPersistence(checkpoint?.World);
             Life = new RunLife(checkpoint?.Life ?? RunLifeSnapshot.Fresh(1));
+            soundState.Observe(Life[0]);
             Life.BindProfile(0, profileId ?? (Life.Capture().Profiles[0] != Guid.Empty ? Life.Capture().Profiles[0] : Guid.NewGuid()));
             Sequence = checkpoint != null ? RunSequence.Restore(checkpoint, generation.CreateConfiguration())
                 : useLevelSequence ? new RunSequence(seed, generation.CreateConfiguration()) : null;
@@ -115,6 +117,7 @@ namespace SpaceCrawler.Gameplay
         public bool DamagePlayer(Guid attackId, int amount) => Life.TryDamage(Simulation.State.Player, attackId, amount);
         private void ApplyLife()
         {
+            soundState.Observe(Life[0]);
             Simulation.SetLifeActive(Life[0].State == PlayerLifeState.Alive && !Life.Ended);
             if (!Simulation.CanAct) { Motor.Stop(); combat.ClearRoom(); }
             try { if (Life.Ended) FinishRun(); else SaveCurrent(); HealthFailure = null; }

@@ -150,6 +150,7 @@ namespace SpaceCrawler.Gameplay
 #if UNITY_EDITOR
             saveDirectory = SaveDirectoryOverride ?? saveDirectory;
 #endif
+            gameObject.AddComponent<GameAudio>().Bind(Path.Combine(saveDirectory,"DeviceSettings"));
             if(!LocalDiagnostics)
             {
                 steam=new SteamClientService(new SteamworksClientApi());
@@ -392,6 +393,8 @@ namespace SpaceCrawler.Gameplay
                     else StartMultiplayerSession(automatic == "host" ? SessionRole.Host : SessionRole.Client);
                 }
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
+                if(destination==ApplicationState.MainMenu && SessionDiagnostics.Option("--audio-options-validation")!=null
+                    && GetComponent<AudioOptionsValidationDriver>()==null)gameObject.AddComponent<AudioOptionsValidationDriver>().Bind(this);
                 if(destination==ApplicationState.MainMenu && SessionDiagnostics.Option("--steam-session-validation")!=null
                     && GetComponent<SteamSessionValidationDriver>()==null)gameObject.AddComponent<SteamSessionValidationDriver>().Bind(this);
                 if (destination == ApplicationState.MainMenu && SessionDiagnostics.Option("--completion-validation") != null

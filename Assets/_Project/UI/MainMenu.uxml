@@ -13,7 +13,7 @@
                 <ui:Button name="new-game" text="New Game" class="primary" />
                 <ui:Button name="continue" text="Continue  /  No save available" enabled="false" />
                 <ui:Button name="load-game" text="Load Game  /  Unavailable" enabled="false" />
-                <ui:Button name="options" text="Options  /  Unavailable" enabled="false" />
+                <ui:Button name="options" text="Options" />
                 <ui:Button name="exit" text="Exit" />
             </ui:VisualElement>
             <ui:Label name="status" class="status" />

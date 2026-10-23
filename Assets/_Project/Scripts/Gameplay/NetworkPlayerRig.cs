@@ -19,6 +19,8 @@ namespace SpaceCrawler.Gameplay
         private bool authoritative;
         private long presentedAttacks;
         private Color aliveColor;
+        private bool receivedSnapshot;
+        private readonly PlayerSoundState soundState=new PlayerSoundState();
         public PlayerVitals Vitals { get; private set; } = PlayerVitals.Starting;
         public float ReviveProgress { get; set; }
         public PlayerSimulation Simulation { get; private set; }
@@ -76,8 +78,9 @@ namespace SpaceCrawler.Gameplay
                 new CoreVector(state.Velocity.x, state.Velocity.y), new CoreVector(state.Aim.x, state.Aim.y));
             motor.transform.position = new Vector3(state.Position.x, state.Position.y, 0);
             if (state.Attacks > presentedAttacks)
-                combat.Presentation.Present(weapon, state.AttackOrigin, state.AttackAim);
+                combat.Presentation.Present(weapon, state.AttackOrigin, state.AttackAim,receivedSnapshot);
             presentedAttacks = state.Attacks;
+            receivedSnapshot=true;
         }
 
         public void ClearRoom()
@@ -88,6 +91,7 @@ namespace SpaceCrawler.Gameplay
         public void Present() => presentation.Present(State);
         public void PresentVitals(PlayerVitals vitals)
         {
+            soundState.Observe(vitals);
             Vitals = vitals; bodySprite.color = vitals.State == PlayerLifeState.Alive ? aliveColor : new Color(.45f, .45f, .5f);
             if (Simulation == null) return;
             Simulation.SetLifeActive(vitals.State == PlayerLifeState.Alive);

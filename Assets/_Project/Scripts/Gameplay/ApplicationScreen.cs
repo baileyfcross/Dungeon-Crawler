@@ -35,6 +35,10 @@ namespace SpaceCrawler.Gameplay
         private VisualElement completionOverlay;
         private Button completionReturn;
         private Func<Guid,RunRewardSummary> reward;
+        private AudioOptionsPanel audioOptions;
+        private int heardLevel;
+        private RunRoomId heardRoom;
+        private bool heardRoomSet;
         public void BindRewards(Func<Guid,RunRewardSummary> source) => reward = source;
         private void Update()
         {
@@ -105,6 +109,7 @@ namespace SpaceCrawler.Gameplay
             session = gameplaySession;
             session.Rooms.RoomChanged += ShowRun;
             session.HealthChanged += ShowHealth;
+            session.Input.SetPauseInterceptor(()=>audioOptions.ConsumePause());
             ShowRun();
             ShowHealth();
         }
@@ -114,6 +119,7 @@ namespace SpaceCrawler.Gameplay
             var label = View.Q<Label>("run-readout");
             if (label == null || session == null) return;
             var progression = session.Rooms.Progression;
+            PresentRoomSound(session.LevelNumber,progression.CurrentRoomId);
             label.text = $"Level {session.LevelNumber} / {RunSequence.LevelCount}  ·  Rooms entered {progression.RoomsEntered}\n" +
                 (progression.IsTerminal ? "Level exit room. Connected rooms remain available." : "Walk onto a doorway to travel. You can return to rooms you have visited.");
             if (session.Persistence?.RecoveryMessage != null) label.text += "\n" + session.Persistence.RecoveryMessage;
@@ -136,16 +142,23 @@ namespace SpaceCrawler.Gameplay
         {
             multiplayer = session;
             multiplayer.Changed += ShowMultiplayer;
+            multiplayer.SetPauseInterceptor(()=>audioOptions.ConsumePause());
             var hint = View.Q<Label>("pause-hint");
             if (hint != null) hint.text = "Local pause only. The other player and host simulation continue.\nRelease movement before resuming.";
             ShowMultiplayer();
         }
         private void ShowMultiplayer()
         {
+            if(multiplayer.RoomReady)PresentRoomSound(multiplayer.LevelNumber,multiplayer.CurrentRoom);
             var label = View.Q<Label>("run-readout");
             if (label != null) label.text = SessionDiagnostics.Option("--show-diagnostics")=="true" ? multiplayer.Describe() : multiplayer.PlayerSummary();
             ShowWeapon(multiplayer.WeaponDisplayName);
             ShowHealth();
+        }
+        private void PresentRoomSound(int level,RunRoomId room)
+        {
+            if(heardRoomSet && (level!=heardLevel || !room.Equals(heardRoom)))GameAudio.Emit(level!=heardLevel?SoundCue.LevelTransition:SoundCue.RoomTransition);
+            heardRoomSet=true;heardLevel=level;heardRoom=room;
         }
 
         private void ShowHealth()
@@ -217,7 +230,7 @@ namespace SpaceCrawler.Gameplay
             if (pauseReturn != null) pauseReturn.clicked += RequestReturn;
 
             SetUnavailable("load-game", "Manual save selection is unavailable. Use Continue for the saved run.");
-            SetUnavailable("options", "Options unavailable.");
+            audioOptions=gameObject.AddComponent<AudioOptionsPanel>();audioOptions.Bind(View,flow,GameAudio.Current);
             flow.StateChanged += Render;
             Render(flow.State);
         }
@@ -239,6 +252,8 @@ namespace SpaceCrawler.Gameplay
 
         private void Render(ApplicationState state)
         {
+            if(state==ApplicationState.Death)GameAudio.Emit(SoundCue.RunOver);
+            if(state==ApplicationState.Completed)GameAudio.Emit(SoundCue.RunComplete);
             newGame?.SetEnabled(flow.CanRequest(ApplicationCommand.NewGame));
             continueGame?.SetEnabled(flow.CanRequest(ApplicationCommand.Continue));
             host?.SetEnabled(flow.CanRequest(ApplicationCommand.NewGame)); join?.SetEnabled(flow.CanRequest(ApplicationCommand.NewGame));

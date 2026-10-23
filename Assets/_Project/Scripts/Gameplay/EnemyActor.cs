@@ -25,6 +25,7 @@ namespace SpaceCrawler.Gameplay
         public uint Revision => revision;
         public event Action Died;
         public bool Restored { get; private set; }
+        internal bool IsRestoring { get; private set; }
 
         public void ConfigureMelee(MeleeEnemyDefinition definition)
         {
@@ -83,11 +84,11 @@ namespace SpaceCrawler.Gameplay
                 throw new InvalidOperationException("Invalid enemy snapshot.");
             if (restoring && !replicaHasSnapshot && lifecycle == EnemyLifecycle.Dead) Lifecycle = EnemyLifecycle.Dead;
             replicaHasSnapshot = true;
-            PresentReplica(lifecycle, health, nextRevision, aggro); return true;
+            PresentReplica(lifecycle, health, nextRevision, aggro,restoring); return true;
         }
 
-        private void PresentReplica(EnemyLifecycle lifecycle, int health, uint nextRevision, int aggro)
-        { target.PresentAuthoritativeHealth(health, target.InitialHealth); Present(lifecycle, health, nextRevision, aggro); }
+        private void PresentReplica(EnemyLifecycle lifecycle, int health, uint nextRevision, int aggro,bool silent=false)
+        { target.PresentAuthoritativeHealth(health, target.InitialHealth,silent); Present(lifecycle, health, nextRevision, aggro); }
 
         private void Present(EnemyLifecycle lifecycle, int health, uint nextRevision, int aggro)
         {
@@ -96,18 +97,23 @@ namespace SpaceCrawler.Gameplay
             if (Simulation != null) target.PresentEnemyHealth();
             if (lifecycle != EnemyLifecycle.Alive) foreach (var shape in target.HitColliders) shape.enabled = false;
             if (lifecycle == EnemyLifecycle.Despawned) gameObject.SetActive(false);
-            if (died) { DeathEvents++; Died?.Invoke(); }
+            if (died) { GameAudio.Emit(SoundCue.EnemyDown);DeathEvents++; Died?.Invoke(); }
         }
 
         public void Restore(SavedEnemy saved)
         {
             if (Simulation == null || saved.Spawn != Identity.Spawn) throw new InvalidOperationException("Only an authoritative matching enemy can be restored.");
             // Restore is not a new death or damage event.
-            Restored = true;
-            Lifecycle = saved.Health == 0 ? EnemyLifecycle.Dead : EnemyLifecycle.Alive;
-            Simulation.RestoreHealth(saved.Health,saved.Maximum);
-            transform.position = new Vector3(saved.Position.X,saved.Position.Y,0);
-            Behaviour?.Restore(saved.Facing); SynchronizeBehaviour();
+            IsRestoring=true;
+            try
+            {
+                Restored = true;
+                Lifecycle = saved.Health == 0 ? EnemyLifecycle.Dead : EnemyLifecycle.Alive;
+                Simulation.RestoreHealth(saved.Health,saved.Maximum);
+                transform.position = new Vector3(saved.Position.X,saved.Position.Y,0);
+                Behaviour?.Restore(saved.Facing); SynchronizeBehaviour();
+            }
+            finally{IsRestoring=false;}
         }
 
         public void Retire()

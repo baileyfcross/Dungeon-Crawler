@@ -17,8 +17,9 @@ namespace SpaceCrawler.Gameplay
         public void Present(HealthSimulation health)
             => Present(health.Current, health.Maximum);
 
-        public void Present(int current, int maximum)
+        public void Present(int current, int maximum,bool silent=false)
         {
+            if(!silent && previousHealth>=0 && current<previousHealth)GameAudio.Emit(SoundCue.Hit);
             if(previousHealth>=0 && current<previousHealth && current>0)flashUntil=Time.unscaledTime+.16f;
             previousHealth=current;alive=current>0;
             healthFill.localScale = new Vector3(fullScale.x * current / maximum, fullScale.y, fullScale.z);

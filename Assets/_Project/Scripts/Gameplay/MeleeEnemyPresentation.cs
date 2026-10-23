@@ -10,6 +10,7 @@ namespace SpaceCrawler.Gameplay
         private long presentedStrike;
         private float strikeUntil;
         private float normalWidth;
+        private EnemyBehaviourState previousState;
         private void Awake(){normalWidth=indicator.widthMultiplier;}
         private void LateUpdate()
         {
@@ -20,6 +21,8 @@ namespace SpaceCrawler.Gameplay
             indicator.enabled = alive;
             if (!alive) return;
             var state = actor.BehaviourState;
+            if(state==EnemyBehaviourState.Windup && previousState!=state)GameAudio.Emit(SoundCue.EnemyWarning);
+            previousState=state;
             var windup = state == EnemyBehaviourState.Windup || state == EnemyBehaviourState.Strike || Time.time < strikeUntil;
             // The same replicated windup drives both outline width and color; this never predicts a hit.
             bool striking=state==EnemyBehaviourState.Strike || Time.time<strikeUntil;

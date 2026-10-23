@@ -25,7 +25,7 @@ namespace SpaceCrawler.Tests.PlayMode
                 Assert.That(SceneManager.GetActiveScene().name, Is.EqualTo("MainMenu"));
                 AssertSingleRootAndScreen(root);
                 var menu = root.CurrentScreen;
-                foreach (var name in new[] { "load-game", "options" })
+                foreach (var name in new[] { "load-game" })
                 {
                     var unavailable = menu.View.Q<Button>(name);
                     Assert.That(unavailable, Is.Not.Null, name);

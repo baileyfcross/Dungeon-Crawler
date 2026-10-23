@@ -49,7 +49,7 @@ namespace SpaceCrawler.Gameplay
         }
 
         internal void PresentEnemyHealth()
-        { presentation.Present(Health); DisplayedHealth = Health.Current; }
+        { presentation.Present(Health.Current,Health.Maximum,enemy.IsRestoring); DisplayedHealth = Health.Current; }
 
         public bool ReceiveDamage(DamageRequest request, out DamageResult result)
             => ReceiveDamage(request, CombatFaction.Player, out result);
@@ -70,13 +70,13 @@ namespace SpaceCrawler.Gameplay
         }
 
         // A client owns presentation only: no HealthSimulation and no damage execution.
-        public void PresentAuthoritativeHealth(int current, int maximum)
+        public void PresentAuthoritativeHealth(int current, int maximum,bool silent=false)
         {
             if (Health != null || maximum != initialHealth || current < 0 || current > maximum)
                 throw new InvalidOperationException("Invalid replicated target presentation.");
             DisplayedHealth = current;
             foreach (var collider in hitColliders) collider.enabled = false;
-            presentation.Present(current, maximum);
+            presentation.Present(current, maximum,silent);
         }
     }
 }

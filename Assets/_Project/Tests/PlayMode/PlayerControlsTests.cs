@@ -145,7 +145,7 @@ namespace SpaceCrawler.Tests.PlayMode
             yield return new WaitForSeconds(0.2f);
             AssertVector(session.Motor.Body.position, pausedPosition, 0.001f);
             AssertVector(Aim(), pausedAim, 0.001f);
-            Assert.That(root.CurrentScreen.View.Q<Button>("options").enabledInHierarchy, Is.False);
+            Assert.That(root.CurrentScreen.View.Q<Button>("options").enabledInHierarchy, Is.True);
             Submit(root.CurrentScreen.View.Q<Button>("resume"));
             yield return new WaitForSeconds(0.15f);
             Assert.That(root.Flow.State, Is.EqualTo(ApplicationState.Gameplay));

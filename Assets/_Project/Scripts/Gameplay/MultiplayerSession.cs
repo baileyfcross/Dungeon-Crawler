@@ -173,7 +173,7 @@ namespace SpaceCrawler.Gameplay
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             var validation = SessionDiagnostics.Option("--session-validation");
             if (validation == "run" || validation == "checkpoint" || validation == "resume" || validation == "enemies"
-                || validation == "traversal" || validation == "traversal-resume" || validation == "health" || validation == "health-checkpoint" || validation == "health-resume" || validation == "melee") gameObject.AddComponent<SessionValidationDriver>().Bind(this, flow);
+                || validation == "traversal" || validation == "traversal-resume" || validation == "health" || validation == "health-checkpoint" || validation == "health-resume" || validation == "melee" || validation=="audio") gameObject.AddComponent<SessionValidationDriver>().Bind(this, flow);
 #endif
         }
 
@@ -220,6 +220,9 @@ namespace SpaceCrawler.Gameplay
         public void SetUiGate(Func<Vector2, bool> gate)
         { if (players[LocalPlayer - 1] != null) players[LocalPlayer - 1].Input.SetUiGate(gate); uiGate = gate; }
         private Func<Vector2, bool> uiGate;
+        private Func<bool> pauseInterceptor;
+        public void SetPauseInterceptor(Func<bool> interceptor)
+        {pauseInterceptor=interceptor;if(players[LocalPlayer-1]!=null)players[LocalPlayer-1].Input.SetPauseInterceptor(interceptor);}
 
         private void Approve(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
         {
@@ -356,7 +359,7 @@ namespace SpaceCrawler.Gameplay
                 if (Run != null && incoming.weapon != weapon.Id) throw new InvalidOperationException("Equipment cannot change during this session.");
                 Run = graph; Fingerprint = incoming.fingerprint; descriptor = incoming; epoch = incoming.epoch;
                 weapon = (incoming.weapon == knife.CreateConfiguration().Id ? knife : blaster).CreateConfiguration();
-                if (players[0] == null) { CreatePlayers(); SetUiGate(uiGate); }
+                if (players[0] == null) { CreatePlayers(); SetUiGate(uiGate); SetPauseInterceptor(pauseInterceptor); }
                 SetRoomReady(false); ClearReplicaProjectiles();
                 foreach (var rig in players) rig.ClearRoom();
                 if (!initializedCatalog) { rooms.InitializeCatalog(Run, generation, true); initializedCatalog = true; }
