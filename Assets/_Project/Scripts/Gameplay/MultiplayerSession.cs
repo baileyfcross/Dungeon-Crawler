@@ -89,6 +89,7 @@ namespace SpaceCrawler.Gameplay
         public bool PollLocalDevices { get; set; } = true;
         public string Failure { get; private set; }
         public string WeaponName => weapon?.Id ?? "Waiting";
+        public string WeaponDisplayName => weapon == null ? "Waiting" : ResolveWeapon(weapon.Id).DisplayName;
         public event Action Changed;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         public int EnemyFixtureCount { get; set; }
@@ -575,6 +576,14 @@ namespace SpaceCrawler.Gameplay
             { savedAttackCount = players.Sum(p => p.Combat.Simulation.AcceptedAttackCount); TrySave(); }
             if (Mode == SessionRole.Host && Time.realtimeSinceStartupAsDouble >= nextSnapshot)
             { nextSnapshot = Time.realtimeSinceStartupAsDouble + 0.05; SendState(); }
+        }
+
+        public string PlayerSummary()
+        {
+            if(!string.IsNullOrEmpty(Failure))return "Connection interrupted. Return to Main Menu. The host keeps the last saved run.";
+            if(!roomReady)return Mode==SessionRole.Host ? "Waiting for your teammate. Invite a friend to begin." : "Joining the host's run...";
+            int entered=Mode==SessionRole.Host ? Progression.RoomsEntered : lastHeader.RoomsEntered;
+            return $"Level {LevelNumber} / {RunSequence.LevelCount}  ·  Rooms entered {entered}\nBoth players must stand at the same doorway to travel.";
         }
 
         public string Describe()

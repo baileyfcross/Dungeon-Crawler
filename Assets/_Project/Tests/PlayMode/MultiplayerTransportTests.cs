@@ -359,6 +359,7 @@ namespace SpaceCrawler.Tests.PlayMode
         public IEnumerator BlasterProjectilesAreHostOnlyAndCleanupOnSharedEntry()
         {
             yield return StartPair(true); Assert.That(client.WeaponName, Is.EqualTo("weapon.blaster"));
+            Assert.That(client.WeaponDisplayName, Is.EqualTo("Blaster"));
             // Keep the fixture's shot origin clear of the authored south wall as well as the target.
             var target = host.Rooms.CurrentRoom.Targets[0]; var position = (Vector2)target.transform.position - Vector2.up * 1.3f;
             host.Players[0].Motor.PlaceAt(position); host.Players[1].Motor.PlaceAt(position + Vector2.right * .1f);

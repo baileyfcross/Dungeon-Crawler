@@ -88,6 +88,11 @@ namespace SpaceCrawler.Tests.PlayMode
             session.Life.TrySetMaximum(new PlayerIdentity(1), 150); session.DamagePlayer(Guid.NewGuid(), 25); session.Life.TryAwardRunXp(250);
             Assert.That(root.Profile.Experience, Is.Zero);
             Assert.That(root.CurrentScreen.View.Q<ProgressBar>("player-health").value, Is.EqualTo(75));
+            yield return null;
+            Assert.That(root.CurrentScreen.View.Q<ProgressBar>("player-health").highValue, Is.EqualTo(150));
+            Assert.That(root.CurrentScreen.View.Q<Label>("run-xp").text, Does.Contain("250"));
+            Assert.That(root.CurrentScreen.View.Q<ProgressBar>("teammate-health").style.display.value, Is.EqualTo(DisplayStyle.None));
+            Assert.That(root.CurrentScreen.View.Q<ProgressBar>("revive-progress").style.display.value, Is.EqualTo(DisplayStyle.None));
             Submit("return-to-menu"); yield return Until(() => root.Flow.State == ApplicationState.MainMenu);
             Submit("continue"); yield return Until(() => root.Flow.State == ApplicationState.Gameplay);
             session = root.CurrentGameplay; session.PollLocalDevices = false;

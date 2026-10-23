@@ -47,9 +47,11 @@ namespace SpaceCrawler.Tests.PlayMode
         [UnityTest] public IEnumerator LinkingRequiresAnExplicitMenuActionAndPreservesTheProfile()
         {
             Guid id=root.Profile.Id;Assert.That(root.SteamProfileAssociated,Is.False);
+            Assert.That(root.CurrentScreen.View.Q<Label>("steam-account").text,Does.Contain("111").And.Contain("not yet linked"));
             Assert.That(root.CurrentScreen.View.Q<Button>("steam-host").enabledSelf,Is.False);
             Submit("steam-associate");yield return null;
             Assert.That(root.SteamProfileAssociated,Is.True);Assert.That(root.Profile.Id,Is.EqualTo(id));
+            Assert.That(root.CurrentScreen.View.Q<Label>("steam-account").text,Does.Contain("Linked profile").And.Contain("this computer"));
             Assert.That(Directory.GetDirectories(Path.Combine(path,"AccountBackups")).Length,Is.EqualTo(1));
             Assert.That(root.CurrentScreen.View.Q<Button>("steam-host").enabledSelf,Is.True);
             Submit("new-game");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay);

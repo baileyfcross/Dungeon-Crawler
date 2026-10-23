@@ -42,3 +42,9 @@ Button:disabled { background-color: rgb(17, 28, 41); border-color: rgb(34, 49, 6
 .pause-overlay { position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; background-color: rgba(5, 10, 18, 0.88); }
 .pause-card { width: 440px; padding: 28px; border-radius: 6px; background-color: rgb(14, 27, 40); }
 .pause-hint { font-size: 13px; margin-top: 16px; margin-bottom: 0; }
+.gameplay-hud .unity-progress-bar__background { background-color: rgb(14, 27, 40); }
+.gameplay-hud .unity-progress-bar__progress { background-color: rgb(35, 95, 101); }
+.gameplay-hud .unity-progress-bar__title { color: rgb(228, 239, 245); }
+.gameplay-hud .health-damaged .unity-progress-bar__progress { background-color: rgb(156, 57, 41); }
+.gameplay-hud .teammate-health .unity-progress-bar__progress { background-color: rgb(101, 71, 128); }
+.pause-card { max-width: 92%; }

@@ -9,6 +9,8 @@ namespace SpaceCrawler.Gameplay
         private EnemyActor actor;
         private long presentedStrike;
         private float strikeUntil;
+        private float normalWidth;
+        private void Awake(){normalWidth=indicator.widthMultiplier;}
         private void LateUpdate()
         {
             if (actor == null) actor = GetComponent<EnemyActor>();
@@ -19,8 +21,11 @@ namespace SpaceCrawler.Gameplay
             if (!alive) return;
             var state = actor.BehaviourState;
             var windup = state == EnemyBehaviourState.Windup || state == EnemyBehaviourState.Strike || Time.time < strikeUntil;
-            indicator.startColor = indicator.endColor = windup
-                ? new Color(1, .35f, .1f, .35f + .65f * actor.WindupProgress) : new Color(1, .8f, .4f);
+            // The same replicated windup drives both outline width and color; this never predicts a hit.
+            bool striking=state==EnemyBehaviourState.Strike || Time.time<strikeUntil;
+            indicator.widthMultiplier=normalWidth*(windup ? 1.5f+actor.WindupProgress : 1);
+            indicator.startColor = indicator.endColor = striking ? Color.white : windup
+                ? Color.Lerp(new Color(1,.8f,.15f),new Color(1,.2f,.1f),actor.WindupProgress) : new Color(1, .8f, .4f);
             var origin = transform.position;
             if (!windup)
             { indicator.positionCount = 2; indicator.SetPosition(0, origin); indicator.SetPosition(1, origin + (Vector3)actor.Facing * .7f); return; }

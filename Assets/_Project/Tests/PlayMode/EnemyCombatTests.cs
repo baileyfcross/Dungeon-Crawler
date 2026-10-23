@@ -64,6 +64,25 @@ namespace SpaceCrawler.Tests.PlayMode
             session.Simulation.RequestAim(new AimIntent(new PlayerIdentity(1), CoreVector.UnitX));
             Assert.That(session.Combat.RequestAttack(new AttackIntent(new PlayerIdentity(1), CoreVector.UnitX)), Is.True);
         }
+        [UnityTest]
+        public IEnumerator ReplicatedDamageFlashesOnlyOnHealthLossAndResetsAfterFeedback()
+        {
+            var target=Object.Instantiate(Prefab,content.transform);
+            var presentation=target.GetComponentInChildren<TargetPresentation>();
+            var data=new SerializedObject(presentation);
+            var sprite=(SpriteRenderer)data.FindProperty("targetSprite").objectReferenceValue;
+            Color original=sprite.color;
+            target.PresentAuthoritativeHealth(100,100);yield return null;
+            Assert.That(sprite.color,Is.EqualTo(original));
+            target.PresentAuthoritativeHealth(75,100);yield return null;
+            Assert.That(sprite.color,Is.EqualTo(Color.white));
+            target.PresentAuthoritativeHealth(75,100);
+            yield return new WaitForSecondsRealtime(.2f);
+            Assert.That(sprite.color,Is.EqualTo(original),"Repeated snapshots cannot extend the hit flash.");
+            target.PresentAuthoritativeHealth(0,100);yield return null;
+            Assert.That(sprite.color,Is.Not.EqualTo(Color.white));
+            Assert.That(target.Health,Is.Null,"Presentation cannot create authority.");
+        }
 
         [UnityTest]
         public IEnumerator MeleeUsesExistingResolverOnceAcrossCompoundShapesAndDeathIsFinal()

@@ -21,28 +21,54 @@ namespace SpaceCrawler.Gameplay
         private void Submit(string name)
         {var button=root.CurrentScreen.View.Q<Button>(name);Check(button!=null && button.enabledInHierarchy,name+" available");using(var e=NavigationSubmitEvent.GetPooled()){e.target=button;button.SendEvent(e);}}
         public void Bind(ApplicationRoot application){root=application;StartCoroutine(Run());}
+        private IEnumerator CapturePanel(string path,int width,int height)
+        {
+            var settings=root.CurrentScreen.GetComponent<UIDocument>().panelSettings;
+            var previous=settings.targetTexture;var target=RenderTexture.GetTemporary(width,height,0,RenderTextureFormat.ARGB32);
+            Texture2D pixels=null;var active=RenderTexture.active;
+            try
+            {
+                settings.targetTexture=target;
+                for(int frame=0;frame<12;frame++){root.CurrentScreen.View.MarkDirtyRepaint();yield return null;}
+                var bounds=root.CurrentScreen.View.worldBound;
+                root.CurrentScreen.View.Query<Button>().ForEach(button=>
+                {
+                    var box=button.worldBound;
+                    if(box.width<1 || box.height<1)return;
+                    Check(box.xMin>=bounds.xMin-1 && box.yMin>=bounds.yMin-1 && box.xMax<=bounds.xMax+1 && box.yMax<=bounds.yMax+1,"button fits panel: "+button.name);
+                });
+                RenderTexture.active=target;pixels=new Texture2D(width,height,TextureFormat.RGBA32,false);
+                pixels.ReadPixels(new Rect(0,0,width,height),0,0);pixels.Apply();File.WriteAllBytes(path,pixels.EncodeToPNG());
+            }
+            finally
+            {RenderTexture.active=active;settings.targetTexture=previous;RenderTexture.ReleaseTemporary(target);if(pixels!=null)Destroy(pixels);}
+        }
         private IEnumerator Run()
         {
             string mode=SessionDiagnostics.Option("--steam-session-validation");
             Check(root.Profile.Experience==15,"fixture profile XP preserved");Guid profile=root.Profile.Id;
-            if(mode=="menu")
+            if(mode=="menu" || mode=="presentation")
             {
                 Check(root.SteamReady && root.SteamProfileAssociated,"Steam profile on graphical startup");
                 string capture=SessionDiagnostics.Option("--steam-screenshot");
                 if(capture!=null)
                 {
-                    // Render the application panel offscreen: hidden validation windows may have a black swapchain.
-                    Application.runInBackground=true;
-                    var settings=root.CurrentScreen.GetComponent<UIDocument>().panelSettings;
-                    var previous=settings.targetTexture;
-                    var target=RenderTexture.GetTemporary(1920,1080,0,RenderTextureFormat.ARGB32);
-                    settings.targetTexture=target;
-                    for(int frame=0;frame<12;frame++){root.CurrentScreen.View.MarkDirtyRepaint();yield return null;}
-                    var active=RenderTexture.active;RenderTexture.active=target;
-                    var pixels=new Texture2D(target.width,target.height,TextureFormat.RGBA32,false);
-                    pixels.ReadPixels(new Rect(0,0,target.width,target.height),0,0);pixels.Apply();
-                    File.WriteAllBytes(capture,pixels.EncodeToPNG());
-                    RenderTexture.active=active;settings.targetTexture=previous;RenderTexture.ReleaseTemporary(target);Destroy(pixels);
+                    // Offscreen panels let hidden validation windows produce inspectable UI evidence.
+                    foreach(var size in new[]{new Vector2Int(1280,720),new Vector2Int(1920,1080),new Vector2Int(1024,768),new Vector2Int(1280,800)})
+                        yield return CapturePanel(capture+$".{size.x}x{size.y}.png",size.x,size.y);
+                }
+                Check(root.CurrentScreen.View.Q("local-session-controls").resolvedStyle.display==DisplayStyle.None,"localhost controls hidden without opt-in");
+                if(mode=="presentation")
+                {
+                    Submit("continue");yield return Until(()=>root.CurrentGameplay!=null && (root.Flow.State==ApplicationState.Gameplay || root.Flow.State==ApplicationState.Paused),"Continue for HUD capture");
+                    root.CurrentGameplay.PollLocalDevices=false;root.CurrentGameplay.Input.HandleFocus(true);root.Flow.TryRequest(ApplicationCommand.Resume);
+                    yield return null;
+                    Check(!root.CurrentScreen.View.Q<Label>("run-readout").text.Contains("Seed"),"normal HUD omits generation diagnostics");
+                    if(capture!=null)yield return CapturePanel(capture+".gameplay.png",1280,720);
+                    root.Flow.TryRequest(ApplicationCommand.Pause);yield return null;
+                    if(capture!=null)yield return CapturePanel(capture+".pause.png",1280,720);
+                    root.Flow.TryRequest(ApplicationCommand.ReturnToMainMenu);yield return Until(()=>root.Flow.State==ApplicationState.MainMenu,"return from presentation checks");
+                    Debug.Log("[SteamSessionValidation] PRESENTATION-PASS");Application.Quit(0);yield break;
                 }
                 Debug.Log("[SteamSessionValidation] MENU-PASS");Application.Quit(0);yield break;
             }

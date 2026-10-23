@@ -81,13 +81,18 @@ namespace SpaceCrawler.Tests.PlayMode
             yield return StartPair(withScreen: true);
             Assert.That(screen.View.Q<ProgressBar>("player-health").style.display.value, Is.EqualTo(DisplayStyle.Flex));
             Assert.That(screen.View.Q<ProgressBar>("player-health").value, Is.EqualTo(100));
+            Assert.That(screen.View.Q<Label>("equipped-weapon").text,Does.StartWith("Knife").And.Not.Contain("weapon."));
             host.DamagePlayer(new PlayerIdentity(2), Guid.NewGuid(), 30);
             yield return Until(() => screen.View.Q<ProgressBar>("player-health").value == 70);
+            Assert.That(screen.View.Q<ProgressBar>("teammate-health").value, Is.EqualTo(100));
+            Assert.That(screen.View.Q<Label>("run-readout").text, Does.Contain("Level 1 / 3").And.Not.Contain("fingerprint").And.Not.Contain("epoch"));
+            host.DamagePlayer(new PlayerIdentity(1), Guid.NewGuid(), 35);
+            yield return Until(() => screen.View.Q<ProgressBar>("teammate-health").value == 65);
         }
         [UnityTest]
         public IEnumerator HeldReviveReplicatesCancelsOnReleaseThenWipeRewardsBothProfilesOnce()
         {
-            yield return StartPair(); PlaceTogether(); host.Life.TryAwardRunXp(100);
+            yield return StartPair(withScreen: true); PlaceTogether(); host.Life.TryAwardRunXp(100);
             Assert.That(client.DamagePlayer(new PlayerIdentity(1), Guid.NewGuid(), 100), Is.False);
             Assert.That(host.DamagePlayer(new PlayerIdentity(2), Guid.NewGuid(), 100), Is.True);
             yield return Until(() => client.Vitals(1).State == PlayerLifeState.Downed);
@@ -99,10 +104,13 @@ namespace SpaceCrawler.Tests.PlayMode
             host.Readiness.Reset(host.CurrentRoom, host.Progression.ConnectionsFrom(host.CurrentRoom), true);
             host.LocalCommands.Interact(new PlayerIdentity(1), false); host.LocalCommands.Interact(new PlayerIdentity(1), true);
             yield return Until(() => host.Life.ReviveProgress(0) > 1);
+            yield return Until(() => screen.View.Q<ProgressBar>("revive-progress").value > 0);
+            Assert.That(screen.View.Q<ProgressBar>("revive-progress").style.display.value, Is.EqualTo(DisplayStyle.Flex));
             host.LocalCommands.Interact(new PlayerIdentity(1), false); yield return Frames(3);
             Assert.That(host.Life.ReviveProgress(0), Is.Zero); Assert.That(host.Life[1].Current, Is.Zero);
             host.LocalCommands.Interact(new PlayerIdentity(1), true);
             yield return Until(() => client.Vitals(1).Current == 50);
+            yield return Until(() => screen.View.Q<ProgressBar>("revive-progress").style.display.value == DisplayStyle.None);
             Assert.That(host.Life[1].Current, Is.EqualTo(50));
             // Clear test-supplied readiness before the restored player becomes eligible to leave.
             host.Readiness.Reset(host.CurrentRoom, host.Progression.ConnectionsFrom(host.CurrentRoom), true);

@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 using SpaceCrawler.Core;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -28,6 +27,10 @@ namespace SpaceCrawler.Gameplay
         private Button deathReturn;
         private VisualElement deathOverlay;
         private ProgressBar healthBar;
+        private ProgressBar teammateHealth,reviveBar;
+        private Label runXp;
+        private int lastHealth=-1;
+        private float damageUntil;
         private Label healthStatus;
         private VisualElement completionOverlay;
         private Button completionReturn;
@@ -35,6 +38,8 @@ namespace SpaceCrawler.Gameplay
         public void BindRewards(Func<Guid,RunRewardSummary> source) => reward = source;
         private void Update()
         {
+            if (healthBar != null) healthBar.EnableInClassList("health-damaged",Time.unscaledTime < damageUntil);
+            if (runXp != null) runXp.text = $"Run XP  {session?.Life.RunXp ?? multiplayer?.RunXp ?? 0}";
             var hint = View.Q<Label>("completion-hint");
             if (hint != null) hint.text = session != null ? session.CompletionHint : multiplayer?.CompletionHint ?? string.Empty;
             if (flow?.State != ApplicationState.Completed) return;
@@ -109,19 +114,10 @@ namespace SpaceCrawler.Gameplay
             var label = View.Q<Label>("run-readout");
             if (label == null || session == null) return;
             var progression = session.Rooms.Progression;
-            var node = session.Run.GetRoom(progression.CurrentRoomId);
-            var text = new StringBuilder();
-            text.AppendLine($"Level {session.LevelNumber} / {RunSequence.LevelCount}  /  {node.Id}  /  {node.Category}  /  {node.DefinitionId}  /  {progression.State}");
-            text.Append($"Seed {session.Run.Seed}  /  Generation v{session.Run.GenerationVersion}  /  Rooms entered {progression.RoomsEntered}");
-            for (var i = 0; i < progression.Choices.Count; i++)
-            {
-                var next = session.Run.GetRoom(progression.Choices[i].To);
-                text.Append($"\n{(progression.Choices[i].FromPort >= 0 ? AuthoredRoom.PortName(progression.Choices[i].FromPort) : progression.Choices.Count == 1 ? "CENTER" : i == 0 ? "LEFT" : "RIGHT")} -> {next.Id} / {next.Category}");
-            }
-            if (progression.IsTerminal) text.Append(session.Run.GenerationVersion == 1 ? "\nTerminal room reached. No forward exits." : "\nTerminal room reached. Connected rooms remain available.");
-            if (session.Persistence?.RecoveryMessage != null) text.Append("\n" + session.Persistence.RecoveryMessage);
-            if (progression.Failure != null) text.Append("\nRoom loading failed: " + progression.Failure);
-            label.text = text.ToString();
+            label.text = $"Level {session.LevelNumber} / {RunSequence.LevelCount}  ·  Rooms entered {progression.RoomsEntered}\n" +
+                (progression.IsTerminal ? "Level exit room. Connected rooms remain available." : "Walk onto a doorway to travel. You can return to rooms you have visited.");
+            if (session.Persistence?.RecoveryMessage != null) label.text += "\n" + session.Persistence.RecoveryMessage;
+            if (progression.Failure != null) label.text += "\nThe room could not be loaded. Return to the menu and try Continue.";
         }
 
         public void BindLocalSessionControls(Action<SessionRole> start)
@@ -129,7 +125,7 @@ namespace SpaceCrawler.Gameplay
             startMultiplayerSession = start;
             var panel = View.Q("local-session-controls");
             if (panel == null) return;
-            panel.style.display = Debug.isDebugBuild ? DisplayStyle.Flex : DisplayStyle.None;
+            panel.style.display = Debug.isDebugBuild && (Application.isEditor || SessionDiagnostics.Option("--local-session-controls")=="true") ? DisplayStyle.Flex : DisplayStyle.None;
             host = View.Q<Button>("local-host"); join = View.Q<Button>("local-join");
             host.clicked += Host; join.clicked += Join;
         }
@@ -147,14 +143,16 @@ namespace SpaceCrawler.Gameplay
         private void ShowMultiplayer()
         {
             var label = View.Q<Label>("run-readout");
-            if (label != null) { label.text = multiplayer.Describe(); label.style.fontSize = 10; }
-            ShowWeapon(multiplayer.WeaponName);
+            if (label != null) label.text = SessionDiagnostics.Option("--show-diagnostics")=="true" ? multiplayer.Describe() : multiplayer.PlayerSummary();
+            ShowWeapon(multiplayer.WeaponDisplayName);
             ShowHealth();
         }
 
         private void ShowHealth()
         {
             if (healthBar == null) return;
+            if (teammateHealth != null) teammateHealth.style.display = DisplayStyle.None;
+            if (reviveBar != null) reviveBar.style.display = DisplayStyle.None;
             if (multiplayer != null && (!multiplayer.RoomReady || multiplayer.Players[0] == null || multiplayer.Players[1] == null))
             {
                 healthBar.style.display = DisplayStyle.None;
@@ -163,15 +161,29 @@ namespace SpaceCrawler.Gameplay
             }
             healthBar.style.display = DisplayStyle.Flex;
             var vitals = session != null ? session.Life[0] : multiplayer != null ? multiplayer.Vitals(multiplayer.LocalPlayer - 1) : PlayerVitals.Starting;
+            if(lastHealth>=0 && vitals.Current<lastHealth)damageUntil=Time.unscaledTime+.3f;
+            lastHealth=vitals.Current;
             healthBar.highValue = vitals.Maximum; healthBar.SetValueWithoutNotify(vitals.Current);
             healthBar.title = $"Health {vitals.Current} / {vitals.Maximum}";
             if (healthStatus == null) return;
             var failure = session != null ? session.HealthFailure : multiplayer?.HealthFailure;
             if (!string.IsNullOrEmpty(failure)) { healthStatus.text = failure; return; }
             if (flow.RunEndPending) { healthStatus.text = "Finalizing run and saving profile rewards..."; return; }
-            if (multiplayer == null) { healthStatus.text = $"Run XP  {session?.Life.RunXp ?? 0}"; return; }
+            if (multiplayer == null) { healthStatus.text = string.Empty; return; }
             var local = multiplayer.LocalPlayer - 1; var other = 1 - local;
+            var teammate=multiplayer.Vitals(other);
+            if(teammateHealth!=null)
+            {
+                teammateHealth.style.display=DisplayStyle.Flex;teammateHealth.highValue=teammate.Maximum;
+                teammateHealth.SetValueWithoutNotify(teammate.Current);
+                teammateHealth.title=teammate.State==PlayerLifeState.Downed ? "Teammate downed — move close to revive" : $"Teammate {teammate.Current} / {teammate.Maximum}";
+            }
             var progress = multiplayer.Players[vitals.State == PlayerLifeState.Downed ? other : local].ReviveProgress;
+            if(reviveBar!=null && (vitals.State==PlayerLifeState.Downed || teammate.State==PlayerLifeState.Downed))
+            {
+                reviveBar.style.display=DisplayStyle.Flex;reviveBar.highValue=RunLife.ReviveSeconds;reviveBar.SetValueWithoutNotify(progress);
+                reviveBar.title=$"Reviving  {progress:F1} / {RunLife.ReviveSeconds:0} seconds";
+            }
             healthStatus.text = vitals.State == PlayerLifeState.Downed ? $"Downed — waiting for revival. {progress:F1} / 3 seconds"
                 : multiplayer.Vitals(other).State == PlayerLifeState.Downed ? $"Hold E / gamepad South near your teammate to revive. {progress:F1} / 3 seconds" : string.Empty;
         }
@@ -195,6 +207,7 @@ namespace SpaceCrawler.Gameplay
             completionOverlay = View.Q("completion-overlay"); completionReturn = View.Q<Button>("completion-return-to-menu");
             if (completionReturn != null) completionReturn.clicked += RequestReturn;
             healthBar = View.Q<ProgressBar>("player-health"); healthStatus = View.Q<Label>("health-status");
+            teammateHealth=View.Q<ProgressBar>("teammate-health");reviveBar=View.Q<ProgressBar>("revive-progress");runXp=View.Q<Label>("run-xp");
             if (deathReturn != null) deathReturn.clicked += RequestReturn;
             if (newGame != null) newGame.clicked += RequestNewGame;
             if (returnToMenu != null) returnToMenu.clicked += RequestReturn;

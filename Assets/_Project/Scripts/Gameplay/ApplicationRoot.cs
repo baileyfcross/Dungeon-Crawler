@@ -54,7 +54,20 @@ namespace SpaceCrawler.Gameplay
         }
 
         public bool CanInviteSteam=>SteamReady && lobbies?.IsHost==true && SteamSessionActive;
-        public string SteamStatus=>steamNotice ?? (SteamReady ? SteamProfileAssociated ? lobbies?.Status ?? "Steam ready." : "Link this local profile to the signed-in Steam account to play co-op. XP and saves are preserved and backed up first." : "Steam unavailable. Local solo play remains available.");
+        public string SteamAccountText=>accountChanged ? "Account changed — restart to load the new profile."
+            : steam?.IsReady==true ? $"Steam account: {steam.AccountId}\n{(steamProfileAssociated ? "Linked profile · stored on this computer" : "Local profile · not yet linked")}" : "Offline · local profile on this computer";
+        public string SteamStatus
+        {
+            get
+            {
+                if(steamNotice!=null)return steamNotice;
+                if(CurrentMultiplayer?.Failure!=null)return "Connection interrupted. Return to Main Menu; the host keeps the last saved run. Continue requires the original host and teammate.";
+                if(!SteamReady)return "Steam is unavailable. Solo play and local saves remain available. Sign in to Steam and restart the game for co-op. Saves do not sync between computers.";
+                if(!SteamProfileAssociated)return "Link this profile to this Steam account to enable co-op. Existing XP and saves are backed up first. Other Steam accounts use separate profiles.";
+                if(SteamSessionActive && CurrentMultiplayer?.RoomReady==true)return "Co-op connected. Both players must use the same doorway to travel.";
+                return lobbies?.Status ?? "Steam ready. Host a private session or accept a friend's invitation. Saves are stored on this computer.";
+            }
+        }
         private bool LocalDiagnostics=>Application.isEditor || SessionDiagnostics.Option("--session-role")!=null || SessionDiagnostics.Option("--completion-validation")!=null || SessionDiagnostics.Option("--save-validation")!=null || SessionDiagnostics.Option("--disable-steam")=="true";
 
         public RunCheckpoint SavedCheckpoint { get; private set; }

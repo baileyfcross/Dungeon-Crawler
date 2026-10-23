@@ -7,12 +7,13 @@ namespace SpaceCrawler.Gameplay
     public sealed class SteamSessionPresenter : MonoBehaviour
     {
         private ApplicationRoot root;
-        private Label status;
+        private Label status,account;
         private VisualElement sessionControls;
         private Button associate,host,join,invite,cancel,continueGame,resume;
         public void Bind(ApplicationRoot application,VisualElement view)
         {
             root=application;sessionControls=view.Q("steam-session-controls");status=view.Q<Label>("steam-status");continueGame=view.Q<Button>("continue");resume=view.Q<Button>("resume");
+            account=view.Q<Label>("steam-account");
             associate=Wire(view,"steam-associate",()=>root.AssociateSteamProfile());
             host=Wire(view,"steam-host",()=>root.HostSteam(false));join=Wire(view,"steam-join",()=>root.JoinSteamInvitation());
             invite=Wire(view,"steam-invite",()=>root.InviteSteamFriend());cancel=Wire(view,"steam-cancel",()=>root.CancelSteamSession());
@@ -27,6 +28,7 @@ namespace SpaceCrawler.Gameplay
             if(resume!=null && !root.CanResumeCurrentRun)resume.SetEnabled(false);
             if(sessionControls!=null)sessionControls.style.display=root.SteamSessionActive || root.HasSteamInvitation || !root.CanResumeCurrentRun ? DisplayStyle.Flex:DisplayStyle.None;
             if(status!=null)status.text=root.SteamStatus;
+            if(account!=null)account.text=root.SteamAccountText;
             if(associate!=null){associate.style.display=root.SteamReady && !root.SteamProfileAssociated ? DisplayStyle.Flex:DisplayStyle.None;associate.SetEnabled(menu && root.Profile!=null && !root.SteamBusy);}
             host?.SetEnabled(menu && root.SteamReady && root.SteamProfileAssociated && !root.SteamBusy && !root.SteamSessionActive);
             join?.SetEnabled(menu && root.SteamReady && root.SteamProfileAssociated && root.HasSteamInvitation && !root.SteamBusy && !root.SteamSessionActive);

@@ -80,7 +80,8 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(SceneManager.GetActiveScene().path, Is.EqualTo("Assets/_Project/Scenes/Gameplay.unity"));
             VerifyCurrentRoom();
             var readout = root.CurrentScreen.View.Q<Label>("run-readout").text;
-            Assert.That(readout, Does.Contain("room-000").And.Contain("room.starting").And.Contain(session.Run.Seed.ToString()));
+            Assert.That(readout, Does.Contain("Level 1 / 3").And.Contain("Rooms entered"));
+            Assert.That(readout, Does.Not.Contain("room-000").And.Not.Contain("room.starting").And.Not.Contain("Seed"));
             while (session.LevelNumber < RunSequence.LevelCount || !Rooms.Progression.IsTerminal)
             {
                 yield return Frames(3);
@@ -97,7 +98,7 @@ namespace SpaceCrawler.Tests.PlayMode
             }
             Assert.That(session.LevelNumber, Is.EqualTo(3));
             Assert.That(root.CurrentScreen.View.Q<Label>("run-readout").text,
-                Does.Contain("Terminal room reached").And.Contain("Connected rooms remain available").And.Not.Contain("has been defined"));
+                Does.Contain("Level exit room").And.Contain("Connected rooms remain available").And.Not.Contain("has been defined"));
             Assert.That(root.Flow.State, Is.EqualTo(ApplicationState.Gameplay));
             Assert.That(session.Input.GameplayInputEnabled, Is.True);
             root.Flow.TryRequest(ApplicationCommand.ReturnToMainMenu);
