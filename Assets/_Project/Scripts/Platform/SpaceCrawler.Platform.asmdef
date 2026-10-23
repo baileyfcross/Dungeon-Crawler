@@ -1,0 +1,5 @@
+{
+  "name": "SpaceCrawler.Platform",
+  "references": ["SpaceCrawler.Core", "com.rlabrecque.steamworks.net", "SteamNetworkingSockets Transport for Netcode for GameObjects", "Unity.Netcode.Runtime"],
+  "autoReferenced": true
+}

@@ -49,7 +49,7 @@ namespace SpaceCrawler.Gameplay
 
         private void ApplyGate(ApplicationState state)
         {
-            var active = focused && roomAvailable && state == ApplicationState.Gameplay && !flow.RunEndPending;
+            var active = accountAvailable && focused && roomAvailable && state == ApplicationState.Gameplay && !flow.RunEndPending;
             commands.SetInputActive(active);
             if (active)
             {
@@ -133,6 +133,9 @@ namespace SpaceCrawler.Gameplay
         public void SetUiGate(Func<Vector2, bool> isPointerOverInteractiveUi) => pointerOverUi = isPointerOverInteractiveUi;
 
         // The room orchestration supplies availability; input still submits only intentions.
+        private bool accountAvailable=true;
+        public void SetAccountAvailable(bool available)
+        { accountAvailable=available;if(flow!=null)ApplyGate(flow.State); }
         public void SetRoomAvailable(bool available)
         {
             roomAvailable = available;

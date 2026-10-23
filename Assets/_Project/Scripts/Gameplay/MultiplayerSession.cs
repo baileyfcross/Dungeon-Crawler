@@ -5,6 +5,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using SpaceCrawler.Core;
+using SpaceCrawler.Platform;
 using Unity.Collections;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
@@ -103,6 +104,10 @@ namespace SpaceCrawler.Gameplay
             rooms.CurrentRoom.InitializeEncounter(authoritative, epoch, spawns);
         }
 
+        private SteamSessionConnection steam;
+        public void ConfigureSteam(SteamSessionConnection connection)
+        { if(flow!=null || connection==null)throw new InvalidOperationException("Configure Steam before binding the session.");steam=connection; }
+
         public void Bind(SessionRole mode, ApplicationFlow localFlow, string address = "127.0.0.1", ushort port = 7777, ulong? hostSeed = null, bool useLevelSequence = false,
             RunCheckpoint checkpoint = null, Action<RunCheckpoint> save = null, Guid? profileId = null,
             Action<RunEndReceipt> finish = null, Func<Guid, IReadOnlyList<RunEndReceipt>> pendingRewards = null, Action<Guid, Guid> acknowledgeReward = null)
@@ -120,14 +125,15 @@ namespace SpaceCrawler.Gameplay
                     || checkpoint.EquipmentIds[0] != checkpoint.EquipmentIds[1]) throw new InvalidOperationException("Saved cooperative session is incompatible.");
                 weapon = ResolveWeapon(checkpoint.EquipmentIds[0]).CreateConfiguration();
             }
-            transport.SetConnectionData(address, port, mode == SessionRole.Host ? address : null);
-            network.NetworkConfig.NetworkTransport = transport;
+            if(steam==null)
+            { transport.SetConnectionData(address,port,mode==SessionRole.Host?address:null);network.NetworkConfig.NetworkTransport=transport; }
+            else network.NetworkConfig.NetworkTransport=steam.CreateTransport(network.gameObject);
             network.NetworkConfig.EnableSceneManagement = false;
             network.NetworkConfig.ConnectionApproval = true;
             network.NetworkConfig.AutoSpawnPlayerPrefabClientSide = false;
             network.NetworkConfig.PlayerPrefab = null;
             network.NetworkConfig.TickRate = 30;
-            network.NetworkConfig.ConnectionData = Encoding.ASCII.GetBytes("SpaceCrawlerSession8");
+            network.NetworkConfig.ConnectionData = steam==null ? Encoding.ASCII.GetBytes("SpaceCrawlerSession8") : steam.Payload(this.profileId);
             network.ConnectionApprovalCallback = Approve;
             network.OnClientConnectedCallback += Connected;
             network.OnClientDisconnectCallback += Disconnected;
@@ -155,14 +161,14 @@ namespace SpaceCrawler.Gameplay
                 players[1].gameObject.SetActive(false);
             }
             var started = mode == SessionRole.Host ? network.StartHost() : network.StartClient();
-            if (!started) throw new InvalidOperationException("Could not start the direct session connection.");
+            if (!started) throw new InvalidOperationException("Could not start the multiplayer connection.");
             network.CustomMessagingManager.RegisterNamedMessageHandler(InputMessage, ReceiveInput);
             network.CustomMessagingManager.RegisterNamedMessageHandler(DescriptorMessage, ReceiveDescriptor);
             network.CustomMessagingManager.RegisterNamedMessageHandler(AckMessage, ReceiveAck);
             network.CustomMessagingManager.RegisterNamedMessageHandler(StateMessage, ReceiveState);
             network.CustomMessagingManager.RegisterNamedMessageHandler(EndMessage, ReceiveEnd);
             network.CustomMessagingManager.RegisterNamedMessageHandler(RewardAckMessage, ReceiveRewardAck);
-            Debug.Log($"[Session] role={Mode} localPlayer={LocalPlayer} endpoint={address}:{port}; waiting for two-player room agreement", this);
+            Debug.Log($"[Session] role={Mode} localPlayer={LocalPlayer} endpoint={(steam==null?address+":"+port:"Steam P2P")}; waiting for two-player room agreement", this);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             var validation = SessionDiagnostics.Option("--session-validation");
             if (validation == "run" || validation == "checkpoint" || validation == "resume" || validation == "enemies"
@@ -216,11 +222,13 @@ namespace SpaceCrawler.Gameplay
 
         private void Approve(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
         {
-            response.Approved = Encoding.ASCII.GetString(request.Payload) == "SpaceCrawlerSession8"
-                && (request.ClientNetworkId == NetworkManager.ServerClientId || network.ConnectedClientsIds.Count < 2);
-            response.CreatePlayerObject = false;
-            response.Pending = false;
-            if (!response.Approved) response.Reason = "The local session requires one host and one client with the same protocol.";
+            string reason="The session requires one host and one client with the same protocol.";
+            bool capacity=request.ClientNetworkId==NetworkManager.ServerClientId || network.ConnectedClientsIds.Count<2;
+            bool valid=steam==null ? Encoding.ASCII.GetString(request.Payload)=="SpaceCrawlerSession8"
+                : request.ClientNetworkId==NetworkManager.ServerClientId || steam.Approve(network.GetTransportIdFromClientId(request.ClientNetworkId),request.Payload,out reason);
+            response.Approved=capacity && valid;
+            response.CreatePlayerObject=false;response.Pending=false;
+            if(!response.Approved)response.Reason=reason;
         }
 
         private void Connected(ulong sender)
@@ -374,7 +382,9 @@ namespace SpaceCrawler.Gameplay
                 if (ack.fingerprint != Fingerprint) { Fail("Client graph fingerprint did not agree."); return; }
                 peerProfileId = Guid.ParseExact(ack.profileId, "N");
                 if (peerProfileId == profileId) throw new InvalidOperationException("Two separate player profiles are required.");
+                if(steam!=null)steam.ValidateProfile(network.GetTransportIdFromClientId(sender),peerProfileId);
                 Life.BindProfile(1, peerProfileId);
+                if(steam!=null)steam.BindParticipants(Life.RunId,profileId,network.GetTransportIdFromClientId(sender),peerProfileId);
                 if (roomReady) return;
                 if (!Progression.TryCompleteEntry(loadedRoom)) { Fail("Core rejected shared room completion."); return; }
                 SaveCurrent();
@@ -609,7 +619,15 @@ namespace SpaceCrawler.Gameplay
             if (players[1] != null) players[1].gameObject.SetActive(false);
             Fail("Peer disconnected; two-player session stopped safely.");
         }
-        private void TransportFailed() => Fail("Direct transport failed.");
+        public void EndExternalSession(string reason)
+        {
+            if(stopped)return;
+            if(Mode==SessionRole.Client || remoteSender.HasValue)Disconnected(Mode==SessionRole.Host?remoteSender.Value:NetworkManager.ServerClientId);
+            else Fail(reason);
+        }
+        public void ReleaseSteamTransport()
+        { if(steam!=null && network!=null)network.NetworkConfig.NetworkTransport.Shutdown(); }
+        private void TransportFailed() => Fail(steam==null?"Direct transport failed.":"Steam transport failed.");
         private void Fail(string reason)
         { if (stopRequested || stopped) return; Failure = reason; stopRequested = true; Debug.Log("[Session] " + reason, this); Changed?.Invoke(); }
         public void Stop()

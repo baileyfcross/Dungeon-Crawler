@@ -19,7 +19,15 @@
             <ui:Label name="status" class="status" />
         </ui:VisualElement>
         <ui:Label text="Walk into the north-side exit pads to enter another room." class="footer" />
-        <ui:VisualElement name="local-session-controls" style="position: absolute; right: 52px; top: 260px; width: 330px; display: none;">
+        <ui:VisualElement name="steam-controls" style="position: absolute; right: 52px; top: 210px; width: 340px;">
+            <ui:Label text="STEAM CO-OP" class="eyebrow accent" />
+            <ui:Label name="steam-status" class="description" style="font-size: 14px; white-space: normal; margin-top: 10px; margin-bottom: 10px;" />
+            <ui:Button name="steam-associate" text="Link this profile to Steam" tooltip="Associate this profile, its XP and saves with the signed-in Steam account. Existing data is backed up first." />
+            <ui:Button name="steam-host" text="Host Co-op" />
+            <ui:Button name="steam-join" text="Join Invitation" />
+            <ui:Button name="steam-cancel" text="Cancel Session" />
+        </ui:VisualElement>
+        <ui:VisualElement name="local-session-controls" style="position: absolute; right: 52px; top: 490px; width: 330px; display: none;">
             <ui:Label text="LOCAL TWO-PLAYER SESSION" class="eyebrow accent" />
             <ui:Label text="Direct localhost :7777. Start one host, then join from a second instance. No lobby or matchmaking." class="description" style="font-size: 14px; margin-top: 12px; margin-bottom: 16px;" />
             <ui:Button name="local-host" text="Host Local Session" />

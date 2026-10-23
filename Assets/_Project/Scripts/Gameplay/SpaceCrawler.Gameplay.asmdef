@@ -1,6 +1,15 @@
 {
     "name": "SpaceCrawler.Gameplay",
     "rootNamespace": "SpaceCrawler.Gameplay",
-    "references": ["SpaceCrawler.Core", "Unity.InputSystem", "Unity.Netcode.Runtime", "Unity.Networking.Transport", "Unity.Collections", "AstarPathfindingProject"],
+    "references": [
+        "SpaceCrawler.Core",
+        "Unity.InputSystem",
+        "Unity.Netcode.Runtime",
+        "Unity.Networking.Transport",
+        "Unity.Collections",
+        "AstarPathfindingProject",
+        "SpaceCrawler.Platform",
+        "SteamNetworkingSockets Transport for Netcode for GameObjects"
+    ],
     "autoReferenced": true
 }

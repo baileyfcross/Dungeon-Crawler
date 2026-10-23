@@ -161,7 +161,7 @@ namespace SpaceCrawler.Core
                 ProgressRecord.Write(ReceiptPath(run) + ".ack." + peer.ToString("N"), w => w.Write(run.ToByteArray()));
             }
         }
-        private ProfileProgress ReadProfile() => ProgressRecord.Read(FilePath, r =>
+        internal ProfileProgress ReadProfile() => ProgressRecord.Read(FilePath, r =>
         {
             var profile = new ProfileProgress { Id = new Guid(r.ReadBytes(16)), Experience = r.ReadInt64(), FractionHundredths = r.ReadInt32() };
             if (profile.Id == Guid.Empty || profile.Experience < 0 || profile.FractionHundredths < 0 || profile.FractionHundredths > 99) throw new InvalidDataException("Invalid profile.");

@@ -1,8 +1,18 @@
 {
     "name": "SpaceCrawler.Tests.EditMode",
     "rootNamespace": "SpaceCrawler.Tests.EditMode",
-    "references": ["SpaceCrawler.Core", "SpaceCrawler.Gameplay", "Unity.Netcode.Runtime", "Unity.InputSystem"],
-    "includePlatforms": ["Editor"],
-    "optionalUnityReferences": ["TestAssemblies"],
+    "references": [
+        "SpaceCrawler.Core",
+        "SpaceCrawler.Gameplay",
+        "Unity.Netcode.Runtime",
+        "Unity.InputSystem",
+        "SpaceCrawler.Platform"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
     "autoReferenced": false
 }

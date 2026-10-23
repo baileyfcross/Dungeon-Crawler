@@ -19,6 +19,10 @@
             <ui:VisualElement class="hud-spacer" picking-mode="Ignore" />
             <ui:Label text="MOVE  WASD / ARROWS / LEFT STICK     AIM  POINTER / RIGHT STICK     PAUSE  ESC / START" class="controls" picking-mode="Ignore" />
         </ui:VisualElement>
+        <ui:VisualElement name="steam-session-controls" style="position: absolute; left: 32px; bottom: 96px; width: 400px;">
+            <ui:Label name="steam-status" class="description" style="font-size: 12px; white-space: normal;" />
+            <ui:Button name="steam-invite" text="Invite Friend" />
+        </ui:VisualElement>
         <ui:VisualElement name="pause-overlay" class="pause-overlay">
             <ui:VisualElement class="pause-card">
                 <ui:Label text="SPACE CRAWLER" class="eyebrow accent" />

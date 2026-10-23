@@ -501,11 +501,11 @@ namespace SpaceCrawler.Tests.PlayMode
             yield return Frames(3);Assert.That(host.RunEnded,Is.False);Assert.That(host.Completion.Confirmations,Is.Zero);
             yield return WaitFor(()=>host.Life[1].State==PlayerLifeState.Alive && client.Vitals(1).State==PlayerLifeState.Alive && host.Completion.PartyReady,"revived players regain authoritative input before fresh confirmation");
             host.LocalCommands.Interact(new PlayerIdentity(1),false);client.LocalCommands.Interact(new PlayerIdentity(2),false);
-            yield return Frames(4);
+            yield return new WaitForSeconds(.2f); // Allow neutral input to be observed across real network ticks after revival.
             using(var hostLock=new System.IO.FileStream(System.IO.Path.Combine(folder,"Host","progress.lock"),System.IO.FileMode.OpenOrCreate,System.IO.FileAccess.Write,System.IO.FileShare.None))
             using(var clientLock=new System.IO.FileStream(System.IO.Path.Combine(folder,"Client","progress.lock"),System.IO.FileMode.OpenOrCreate,System.IO.FileAccess.Write,System.IO.FileShare.None))
             {
-                host.LocalCommands.Interact(new PlayerIdentity(1),true);yield return Frames(2);Assert.That(host.Life.Ended,Is.False,"both must confirm");
+                host.LocalCommands.Interact(new PlayerIdentity(1),true);yield return WaitFor(()=>host.Completion.Confirmations==1,"host fresh confirmation acknowledged");Assert.That(host.Life.Ended,Is.False,"both must confirm");
                 client.LocalCommands.Interact(new PlayerIdentity(2),true);
                 yield return WaitFor(()=>host.Life.Ended && clientFlow.RunEndPending,"authoritative completion freezes both peers");
                 Assert.That(hostFlow.RunEndPending,Is.True);Assert.That(hostStore.Profile.Experience,Is.Zero);Assert.That(host.RunEnded,Is.False);
