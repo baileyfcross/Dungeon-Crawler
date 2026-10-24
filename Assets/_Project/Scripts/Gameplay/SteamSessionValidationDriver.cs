@@ -19,7 +19,7 @@ namespace SpaceCrawler.Gameplay
         private static IEnumerator Until(Func<bool> condition,string detail)
         {double until=Time.realtimeSinceStartupAsDouble+35;while(!condition()){Check(Time.realtimeSinceStartupAsDouble<until,detail);yield return null;}yield return null;}
         private void Submit(string name)
-        {var button=root.CurrentScreen.View.Q<Button>(name);Check(button!=null && button.enabledInHierarchy,name+" available");using(var e=NavigationSubmitEvent.GetPooled()){e.target=button;button.SendEvent(e);}}
+        {var button=root.CurrentScreen.View.Q<Button>(name);Check(button!=null && button.enabledInHierarchy,name+" available");using(var e=NavigationSubmitEvent.GetPooled()){e.target=button;button.SendEvent(e);SessionDiagnostics.ConfirmNewRun(root.CurrentScreen);}}
         public void Bind(ApplicationRoot application){root=application;StartCoroutine(Run());}
         internal static IEnumerator CapturePanel(ApplicationScreen screen,string path,int width,int height)
         {
@@ -46,6 +46,24 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             string mode=SessionDiagnostics.Option("--steam-session-validation");
+            if(mode=="classes")
+            {
+                root.CurrentScreen.OpenRunSetup(()=>root.Flow.TryRequest(ApplicationCommand.NewGame),true,"New Game");
+                Check(!root.CurrentScreen.View.Q<Button>("start-run").enabledInHierarchy,"class required before starting");
+                root.CurrentScreen.View.Q<DropdownField>("player-class").value="Logistics Manager";
+                root.CurrentScreen.View.Q<DropdownField>("run-difficulty").value="Hard";
+                string capture=SessionDiagnostics.Option("--steam-screenshot");
+                if(capture!=null)
+                    foreach(var size in new[]{new Vector2Int(1280,720),new Vector2Int(1920,1080),new Vector2Int(1024,768),new Vector2Int(1280,800)})
+                        yield return CapturePanel(root.CurrentScreen,capture+$".{size.x}x{size.y}.png",size.x,size.y);
+                Submit("start-run");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay,"class-selected run starts");
+                Check(root.CurrentGameplay.Life.Capture().Classes[0]=="logistics-manager" && root.CurrentGameplay.Difficulty==RunDifficulty.Hard,"selected class and difficulty applied");
+                Check(root.CurrentGameplay.Life[0].Maximum==100 && root.CurrentGameplay.Life.RunXp==0,"no class stat or XP changes");
+                root.Flow.TryRequest(ApplicationCommand.ReturnToMainMenu);yield return Until(()=>root.Flow.State==ApplicationState.MainMenu,"saved class run");
+                Submit("continue");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay,"class Continue");
+                Check(root.CurrentGameplay.Life.Capture().Classes[0]=="logistics-manager" && root.CurrentGameplay.Difficulty==RunDifficulty.Hard,"Continue preserves options");
+                Debug.Log("[SteamSessionValidation] CLASSES-PASS");Application.Quit(0);yield break;
+            }
             Check(root.Profile.Experience==15,"fixture profile XP preserved");Guid profile=root.Profile.Id;
             if(mode=="menu" || mode=="presentation")
             {

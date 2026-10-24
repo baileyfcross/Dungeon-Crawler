@@ -43,7 +43,7 @@ namespace SpaceCrawler.Tests.PlayMode
             ApplicationRoot.SaveDirectoryOverride=previous;yield return null;
         }
         private void Submit(string name)
-        {var button=root.CurrentScreen.View.Q<Button>(name);Assert.That(button,Is.Not.Null);Assert.That(button.enabledInHierarchy,Is.True);using(var e=NavigationSubmitEvent.GetPooled()){e.target=button;button.SendEvent(e);}}
+        {var button=root.CurrentScreen.View.Q<Button>(name);Assert.That(button,Is.Not.Null);Assert.That(button.enabledInHierarchy,Is.True);using(var e=NavigationSubmitEvent.GetPooled()){e.target=button;button.SendEvent(e);SessionDiagnostics.ConfirmNewRun(root.CurrentScreen);}}
         [UnityTest] public IEnumerator LinkingRequiresAnExplicitMenuActionAndPreservesTheProfile()
         {
             Guid id=root.Profile.Id;Assert.That(root.SteamProfileAssociated,Is.False);

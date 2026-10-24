@@ -45,7 +45,7 @@ namespace SpaceCrawler.Tests.PlayMode
         private void Submit(string name)
         {
             var button = root.CurrentScreen.View.Q<Button>(name); Assert.That(button, Is.Not.Null); Assert.That(button.enabledInHierarchy, Is.True);
-            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); }
+            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); SessionDiagnostics.ConfirmNewRun(root.CurrentScreen); }
         }
         [UnityTest]
         public IEnumerator CompletionRetryCreditsOnceShowsRewardsAndDisablesContinue()

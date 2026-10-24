@@ -40,25 +40,18 @@ namespace SpaceCrawler.Gameplay
         private RunRoomId heardRoom;
         private bool heardRoomSet;
         private ExploredMinimap minimap;
-        private DropdownField difficultyChoice;
-        private ApplicationRoot application;
+        private NewRunPanel newRunPanel;
         public void BindDifficulty(ApplicationRoot root)
         {
             if(newGame==null)return;
-            application=root;
-            difficultyChoice=new DropdownField("Difficulty",new System.Collections.Generic.List<string>{"Easy","Normal","Hard"},(int)root.SelectedDifficulty-1);
-            difficultyChoice.name="run-difficulty";difficultyChoice.tooltip="Enemy health, damage and encounter size. Continue restores the saved difficulty.";
-            difficultyChoice.RegisterValueChangedCallback(evt=>
-            {
-                if(!root.SelectDifficulty((RunDifficulty)(difficultyChoice.index+1)))difficultyChoice.SetValueWithoutNotify(root.SelectedDifficulty.ToString());
-            });
-            difficultyChoice.style.marginBottom=12;
-            newGame.parent.Insert(newGame.parent.IndexOf(newGame),difficultyChoice);
+            newRunPanel=gameObject.AddComponent<NewRunPanel>();newRunPanel.Bind(root,View);
         }
+        public void OpenRunSetup(Func<bool> start,bool chooseDifficulty,string title,Button source=null)
+        { newRunPanel?.Open(start,chooseDifficulty,title,source); }
         public void BindRewards(Func<Guid,RunRewardSummary> source) => reward = source;
         private void Update()
         {
-            if(difficultyChoice!=null)difficultyChoice.SetEnabled(flow.State==ApplicationState.MainMenu && !application.SteamBusy && !application.SteamSessionActive);
+
             if (healthBar != null) healthBar.EnableInClassList("health-damaged",Time.unscaledTime < damageUntil);
             if (runXp != null) runXp.text = $"Run XP  {session?.Life.RunXp ?? multiplayer?.RunXp ?? 0}";
             var hint = View.Q<Label>("completion-hint");
@@ -154,8 +147,8 @@ namespace SpaceCrawler.Gameplay
             host = View.Q<Button>("local-host"); join = View.Q<Button>("local-join");
             host.clicked += Host; join.clicked += Join;
         }
-        private void Host() => startMultiplayerSession?.Invoke(SessionRole.Host);
-        private void Join() => startMultiplayerSession?.Invoke(SessionRole.Client);
+        private void Host() => OpenRunSetup(()=>{startMultiplayerSession?.Invoke(SessionRole.Host);return true;},true,"Host Co-op",host);
+        private void Join() => OpenRunSetup(()=>{startMultiplayerSession?.Invoke(SessionRole.Client);return true;},false,"Join Co-op",join);
 
         public void BindMultiplayer(MultiplayerSession session)
         {
@@ -263,7 +256,7 @@ namespace SpaceCrawler.Gameplay
             Render(flow.State);
         }
 
-        private void RequestNewGame() => flow.TryRequest(ApplicationCommand.NewGame);
+        private void RequestNewGame() => OpenRunSetup(()=>flow.TryRequest(ApplicationCommand.NewGame),true,"New Game",newGame);
         private void RequestReturn()
         { if (flow.State != ApplicationState.Completed || multiplayer == null || multiplayer.CanLeaveCompletion) flow.TryRequest(ApplicationCommand.ReturnToMainMenu); }
         private void RequestExit() => flow.TryRequest(ApplicationCommand.Exit);

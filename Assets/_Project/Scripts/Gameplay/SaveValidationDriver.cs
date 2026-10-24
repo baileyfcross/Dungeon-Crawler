@@ -41,7 +41,7 @@ namespace SpaceCrawler.Gameplay
                 Debug.Log("[SaveValidation] PASS-invalid-save-preserved"); Application.Quit(0); yield break;
             }
             Check(button != null && button.enabledInHierarchy, "requested menu command is available");
-            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); }
+            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); SessionDiagnostics.ConfirmNewRun(root.CurrentScreen); }
             yield return Until(() => root.Flow.State == ApplicationState.Gameplay && root.CurrentGameplay != null);
             var session = root.CurrentGameplay;
             session.PollLocalDevices = false; session.Input.HandleFocus(true); root.Flow.TryRequest(ApplicationCommand.Resume);
@@ -87,7 +87,7 @@ namespace SpaceCrawler.Gameplay
         private void Submit(string name)
         {
             var button = root.CurrentScreen.View.Q<Button>(name); Check(button != null && button.enabledInHierarchy, name + " available");
-            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); }
+            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); SessionDiagnostics.ConfirmNewRun(root.CurrentScreen); }
         }
         private IEnumerator RunMelee(string mode)
         {

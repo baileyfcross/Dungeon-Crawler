@@ -7,6 +7,18 @@ namespace SpaceCrawler.Tests.EditMode
 {
     public sealed class RunLifeTests
     {
+        [TestCase("pilot")] [TestCase("mechanic")] [TestCase("doctor")]
+        [TestCase("first-mate")] [TestCase("logistics-manager")] [TestCase("captain")]
+        public void ClassIdentitySurvivesCaptureWithoutChangingGameplay(string id)
+        {
+            var life=Party();life.BindClass(0,id);life.BindClass(0,id);
+            var restored=new RunLife(life.Capture());
+            Assert.That(restored.Capture().Classes[0],Is.EqualTo(id));
+            Assert.That(restored[0].Current,Is.EqualTo(100));Assert.That(restored[0].Maximum,Is.EqualTo(100));
+            Assert.That(restored.RunXp,Is.Zero);
+            Assert.Throws<InvalidOperationException>(()=>life.BindClass(0,id=="pilot"?"doctor":"pilot"));
+            Assert.Throws<InvalidOperationException>(()=>life.BindClass(1,"unknown"));
+        }
         private static readonly Vector2[] Near = { Vector2.Zero, Vector2.UnitX };
         private static readonly bool[] Available = { true, true };
         private static RunLife Party() => new RunLife(RunLifeSnapshot.Fresh(2));

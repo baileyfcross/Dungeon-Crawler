@@ -26,7 +26,7 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Until(Func<bool> condition,string operation)
         { var deadline=Time.realtimeSinceStartupAsDouble+20; while(!condition()){Check(Time.realtimeSinceStartupAsDouble<deadline,operation);yield return null;} yield return null; }
         private void Submit(string name)
-        { var button=root.CurrentScreen.View.Q<Button>(name);Check(button!=null && button.enabledInHierarchy,name+" available");using(var e=NavigationSubmitEvent.GetPooled()){e.target=button;button.SendEvent(e);} }
+        { var button=root.CurrentScreen.View.Q<Button>(name);Check(button!=null && button.enabledInHierarchy,name+" available");using(var e=NavigationSubmitEvent.GetPooled()){e.target=button;button.SendEvent(e);SessionDiagnostics.ConfirmNewRun(root.CurrentScreen);} }
         private void Move(CoreVector direction)
         { if(cooperative){if(Net.LocalCommands.InputActive)Net.LocalCommands.Move(new MoveIntent(Player,direction));}else Solo.Simulation.RequestMove(new MoveIntent(Player,direction)); }
         private void Interact(bool held)

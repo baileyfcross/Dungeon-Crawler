@@ -60,3 +60,6 @@ Button:disabled { background-color: rgb(17, 28, 41); border-color: rgb(34, 49, 6
 #options-overlay .unity-text-field__input { color: rgb(228, 239, 245); background-color: rgb(20, 36, 51); }
 #options-overlay .unity-base-slider__tracker { background-color: rgb(53, 78, 97); }
 #options-overlay .unity-base-slider__dragger { background-color: rgb(96, 221, 218); }
+#new-run-overlay .unity-base-field__label { color: rgb(228, 239, 245); min-width: 95px; }
+#new-run-overlay .unity-base-field__input .unity-text-element { color: rgb(8, 27, 38); }
+#new-run-overlay .unity-base-popup-field__input { min-height: 36px; }

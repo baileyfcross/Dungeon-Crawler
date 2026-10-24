@@ -19,7 +19,7 @@ namespace SpaceCrawler.Gameplay
         private void Submit(string name)
         {
             var button=root.CurrentScreen.View.Q<Button>(name);Check(button!=null && button.enabledInHierarchy,name+" available");
-            using(var evt=NavigationSubmitEvent.GetPooled()){evt.target=button;button.SendEvent(evt);}
+            using(var evt=NavigationSubmitEvent.GetPooled()){evt.target=button;button.SendEvent(evt);SessionDiagnostics.ConfirmNewRun(root.CurrentScreen);}
         }
         private static IEnumerator Until(Func<bool> condition)
         {double until=Time.realtimeSinceStartupAsDouble+30;while(!condition()){Check(Time.realtimeSinceStartupAsDouble<until,"flow completed");yield return null;}yield return null;}

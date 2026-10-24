@@ -13,6 +13,44 @@ namespace SpaceCrawler.Tests.PlayMode
 {
     public sealed class ApplicationSceneFlowTests
     {
+        private static void Send(Button button)
+        {
+            Assert.That(button.enabledInHierarchy,Is.True);
+            using(var evt=NavigationSubmitEvent.GetPooled()){evt.target=button;button.SendEvent(evt);}
+        }
+        [UnityTest]
+        public IEnumerator NewGameModalRequiresClassCancelsSafelyAndContinuePreservesSelection()
+        {
+            var previous=ApplicationRoot.SaveDirectoryOverride;
+            ApplicationRoot.SaveDirectoryOverride=System.IO.Path.GetFullPath("Logs/Validation/ClassSelection/"+Guid.NewGuid().ToString("N"));
+            try
+            {
+                yield return SceneManager.LoadSceneAsync("Assets/_Project/Scenes/Boot.unity");
+                yield return WaitFor(()=>Object.FindFirstObjectByType<ApplicationRoot>()?.Flow.State==ApplicationState.MainMenu);
+                var root=Object.FindFirstObjectByType<ApplicationRoot>();var menu=root.CurrentScreen;
+                Send(menu.View.Q<Button>("new-game"));
+                Assert.That(root.Flow.State,Is.EqualTo(ApplicationState.MainMenu));
+                Assert.That(menu.View.Q<Button>("start-run").enabledInHierarchy,Is.False);
+                Assert.That(menu.View.Q<Button>("continue").enabledInHierarchy,Is.False);
+                var choice=menu.View.Q<DropdownField>("player-class");
+                Assert.That(choice.choices,Is.EquivalentTo(new[]{"Choose a class","Pilot","Mechanic","Doctor","First-Mate","Logistics Manager","Captain"}));
+                choice.value="Doctor";menu.View.Q<DropdownField>("run-difficulty").value="Hard";
+                Send(menu.View.Q<Button>("cancel-new-run"));
+                Assert.That(root.SelectedClass,Is.Empty);Assert.That(root.SelectedDifficulty,Is.EqualTo(RunDifficulty.Normal));Assert.That(root.SavedCheckpoint,Is.Null);
+                Send(menu.View.Q<Button>("new-game"));choice.value="Doctor";menu.View.Q<DropdownField>("run-difficulty").value="Hard";
+                Send(menu.View.Q<Button>("start-run"));yield return WaitFor(()=>root.Flow.State==ApplicationState.Gameplay);
+                Assert.That(root.CurrentGameplay.Life.Capture().Classes[0],Is.EqualTo("doctor"));
+                Assert.That(root.CurrentGameplay.Life[0].Maximum,Is.EqualTo(100));
+                root.Flow.TryRequest(ApplicationCommand.ReturnToMainMenu);yield return WaitFor(()=>root.Flow.State==ApplicationState.MainMenu);
+                Assert.That(root.SavedCheckpoint.Difficulty,Is.EqualTo(RunDifficulty.Hard));
+                Assert.That(root.SavedCheckpoint.Life.Classes[0],Is.EqualTo("doctor"));
+                root.SelectRunOptions(RunDifficulty.Easy,"captain");
+                Send(root.CurrentScreen.View.Q<Button>("continue"));yield return WaitFor(()=>root.Flow.State==ApplicationState.Gameplay);
+                Assert.That(root.CurrentGameplay.Life.Capture().Classes[0],Is.EqualTo("doctor"));
+                Assert.That(root.CurrentGameplay.Difficulty,Is.EqualTo(RunDifficulty.Hard));
+            }
+            finally{ApplicationRoot.SaveDirectoryOverride=previous;}
+        }
         [UnityTest]
         public IEnumerator BootAndUiCommandsCompleteTwoRoundTripsWithoutDuplicatingSystems()
         {
@@ -70,7 +108,7 @@ namespace SpaceCrawler.Tests.PlayMode
             using (var submit = NavigationSubmitEvent.GetPooled())
             {
                 submit.target = button;
-                button.SendEvent(submit);
+                button.SendEvent(submit); SessionDiagnostics.ConfirmNewRun(Object.FindFirstObjectByType<ApplicationRoot>().CurrentScreen);
             }
         }
 

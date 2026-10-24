@@ -39,7 +39,7 @@ namespace SpaceCrawler.Tests.PlayMode
         {
             var button = root.CurrentScreen.View.Q<Button>(name);
             Assert.That(button.enabledInHierarchy, Is.True);
-            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); }
+            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); SessionDiagnostics.ConfirmNewRun(root.CurrentScreen); }
         }
         [UnityTest]
         public IEnumerator ContinueRestoresLaterLevelRoomAndResetsTransientCombat()

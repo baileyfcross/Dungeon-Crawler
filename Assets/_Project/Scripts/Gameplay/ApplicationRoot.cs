@@ -77,6 +77,13 @@ namespace SpaceCrawler.Gameplay
 
         public ApplicationFlow Flow { get; private set; }
         public RunDifficulty SelectedDifficulty { get; private set; } = RunDifficulty.Normal;
+        public string SelectedClass { get; private set; } = string.Empty;
+        private string StartingClass => Debug.isDebugBuild ? SessionDiagnostics.Option("--player-class") ?? SelectedClass : SelectedClass;
+        public bool SelectRunOptions(RunDifficulty difficulty, string classId)
+        {
+            if (!PlayerClasses.Contains(classId) || !SelectDifficulty(difficulty)) return false;
+            SelectedClass = classId; return true;
+        }
         private RunDifficulty StartingDifficulty => Debug.isDebugBuild && SessionDiagnostics.Option("--run-difficulty")=="standard" ? RunDifficulty.Legacy : SelectedDifficulty;
         public bool SelectDifficulty(RunDifficulty difficulty)
         {
@@ -226,8 +233,10 @@ namespace SpaceCrawler.Gameplay
         private void SteamInvitation(ulong lobby)
         {
             invitation=lobby;steamNotice=Flow.State==ApplicationState.MainMenu?"Steam invitation received.":"Invitation received. Return to Main Menu to join; your current run has not been left.";
-            if(Flow.State==ApplicationState.MainMenu && SteamProfileAssociated && !SteamSessionActive && !SteamBusy)JoinSteamInvitation();
+            if(Flow.State==ApplicationState.MainMenu && SteamProfileAssociated && !SteamSessionActive && !SteamBusy)RequestJoinSteamInvitation();
         }
+        public void RequestJoinSteamInvitation()
+        { CurrentScreen?.OpenRunSetup(()=>JoinSteamInvitation(),false,"Join Co-op"); }
         private void SteamSessionReady()
         {
             if(Flow.State!=ApplicationState.MainMenu || !SteamProfileAssociated){lobbies.Cancel();return;}
@@ -352,7 +361,7 @@ namespace SpaceCrawler.Gameplay
                             runSeed: Debug.isDebugBuild && ulong.TryParse(SessionDiagnostics.Option("--solo-seed"),out var soloSeed) ? soloSeed : (ulong?)null,
                             useLevelSequence: true, checkpoint: pendingCheckpoint,
                             save: CommitCheckpoint, restoredWeapon: pendingCheckpoint != null ? multiplayerSession.ResolveWeapon(pendingCheckpoint.EquipmentIds[0]) : null,
-                            profileId: Profile.Id, finish: FinishRun, difficulty:StartingDifficulty,enableKillRewards:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-rewards")=="legacy"));
+                            profileId: Profile.Id, finish: FinishRun, difficulty:StartingDifficulty,enableKillRewards:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-rewards")=="legacy"),classId:StartingClass);
                     }
                     else
                     {
@@ -368,7 +377,7 @@ namespace SpaceCrawler.Gameplay
                         ulong? seed = pendingSessionRole == SessionRole.Host && ulong.TryParse(SessionDiagnostics.Option("--session-seed"), out var requestedSeed) ? requestedSeed : (ulong?)null;
                         CurrentMultiplayer.Bind(pendingSessionRole, Flow, address, port, seed, useLevelSequence: true,
                             checkpoint: pendingCheckpoint, save: CommitCheckpoint, profileId: Profile.Id, finish: FinishRun,
-                            pendingRewards: progress.PendingFor, acknowledgeReward: progress.Acknowledge,difficulty:StartingDifficulty,enableKillRewards:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-rewards")=="legacy"));
+                            pendingRewards: progress.PendingFor, acknowledgeReward: progress.Acknowledge,difficulty:StartingDifficulty,enableKillRewards:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-rewards")=="legacy"),classId:StartingClass);
                     }
                 }
                 else { CurrentGameplay = null; pendingSessionRole = SessionRole.None; }
@@ -393,7 +402,7 @@ namespace SpaceCrawler.Gameplay
                 Flow.CompleteLoading(destination);
                 pendingCheckpoint = null;
                 if (destination == ApplicationState.MainMenu)
-                {RefreshCheckpoint();if(invitation!=0 && SteamProfileAssociated && !SteamBusy && !SteamSessionActive)JoinSteamInvitation();}
+                {RefreshCheckpoint();if(invitation!=0 && SteamProfileAssociated && !SteamBusy && !SteamSessionActive)RequestJoinSteamInvitation();}
                 var automatic = SessionDiagnostics.Option("--session-role");
                 if (destination == ApplicationState.MainMenu && !automaticSessionStarted && (automatic == "host" || automatic == "client"))
                 {
@@ -433,7 +442,7 @@ namespace SpaceCrawler.Gameplay
                 try
                 {
                     await Awaitable.FromAsyncOperation(SceneManager.LoadSceneAsync(mainMenuScenePath), lifetime);
-                    CurrentScreen = Instantiate(mainMenuScreen); CurrentScreen.Bind(Flow);BindSteamScreen();
+                    CurrentScreen = Instantiate(mainMenuScreen); CurrentScreen.Bind(Flow);CurrentScreen.BindDifficulty(this);BindSteamScreen();
                 CurrentScreen.BindRewards(id => runRewards.TryGetValue(id,out var summary) ? summary : null);
                     CurrentScreen.BindContinue(() => RequestContinue()); CurrentScreen.BindLocalSessionControls(mode => StartMultiplayerSession(mode));
                     RefreshCheckpoint(); CurrentScreen.ShowSaveStatus(saveNotice ?? "The requested run could not be loaded. The previous checkpoint is retained.");

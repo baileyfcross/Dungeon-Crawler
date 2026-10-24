@@ -89,6 +89,13 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             yield return Until(() => session.RoomReady, "initial room handshake");
+            string expectedClass=SessionDiagnostics.Option("--expected-class");
+            if(expectedClass!=null)
+            {
+                Check(session.LocalClass==expectedClass,"authoritative class selection restored");
+                if(Host)Check(session.Life.Capture().Classes[1]==SessionDiagnostics.Option("--expected-peer-class"),"peer selected class stored by host");
+                Record("CLASS-SELECTION-PASS");
+            }
             if(SessionDiagnostics.Option("--session-validation").StartsWith("rewards")){yield return RunKillRewards();yield break;}
             if(SessionDiagnostics.Option("--session-validation").StartsWith("ranged")){yield return RunRangedCombat();yield break;}
             if(SessionDiagnostics.Option("--session-validation").StartsWith("exploration")){yield return RunExploration();yield break;}

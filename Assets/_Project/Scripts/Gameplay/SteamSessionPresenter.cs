@@ -15,7 +15,7 @@ namespace SpaceCrawler.Gameplay
             root=application;sessionControls=view.Q("steam-session-controls");status=view.Q<Label>("steam-status");continueGame=view.Q<Button>("continue");resume=view.Q<Button>("resume");
             account=view.Q<Label>("steam-account");
             associate=Wire(view,"steam-associate",()=>root.AssociateSteamProfile());
-            host=Wire(view,"steam-host",()=>root.HostSteam(false));join=Wire(view,"steam-join",()=>root.JoinSteamInvitation());
+            host=Wire(view,"steam-host",()=>root.CurrentScreen.OpenRunSetup(()=>root.HostSteam(false),true,"Host Co-op",host));join=Wire(view,"steam-join",()=>root.RequestJoinSteamInvitation());
             invite=Wire(view,"steam-invite",()=>root.InviteSteamFriend());cancel=Wire(view,"steam-cancel",()=>root.CancelSteamSession());
         }
         private static Button Wire(VisualElement view,string name,Action action)

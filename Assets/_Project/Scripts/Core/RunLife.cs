@@ -89,6 +89,13 @@ namespace SpaceCrawler.Core
                 throw new InvalidOperationException("The saved player slot belongs to a different profile.");
             profiles[slot] = profile;
         }
+        public void BindClass(int slot, string classId)
+        {
+            if (Ended || slot < 0 || slot >= Count || !PlayerClasses.Contains(classId)
+                || (classes[slot].Length > 0 && classes[slot] != classId))
+                throw new InvalidOperationException("Class selection must be valid and cannot change during a run.");
+            classes[slot] = classId;
+        }
         public bool TryDamage(PlayerIdentity target, Guid attackId, int amount)
         {
             var slot = target.Value - 1;

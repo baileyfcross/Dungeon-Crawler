@@ -57,7 +57,7 @@ namespace SpaceCrawler.Gameplay
 
         public void Bind(PlayerIdentity identity, ApplicationFlow flow, ulong? runSeed = null, bool useLevelSequence = false,
             RunCheckpoint checkpoint = null, Action<RunCheckpoint> save = null, WeaponDefinition restoredWeapon = null,
-            Guid? profileId = null, Action<RunEndReceipt> finish = null, RunDifficulty difficulty = RunDifficulty.Legacy, bool enableKillRewards = false)
+            Guid? profileId = null, Action<RunEndReceipt> finish = null, RunDifficulty difficulty = RunDifficulty.Legacy, bool enableKillRewards = false, string classId = "")
         {
             if (Simulation != null) throw new InvalidOperationException("Session is already bound.");
             if (generation == null) throw new InvalidOperationException("Missing run generation definition.");
@@ -70,6 +70,7 @@ namespace SpaceCrawler.Gameplay
             EncounterVersion=checkpoint?.EncounterVersion ?? (Difficulty==RunDifficulty.Legacy?0:EncounterComposition.CurrentVersion);
             RewardPolicy=checkpoint!=null ? checkpoint.Rewards : enableKillRewards ? (rewardDefinition!=null?rewardDefinition.CreatePolicy():RunRewardPolicy.Default()) : null;
             Life = new RunLife(checkpoint?.Life ?? RunLifeSnapshot.Fresh(1));
+            if (checkpoint == null && !string.IsNullOrEmpty(classId)) Life.BindClass(0,classId);
             killRewards=new RunKillRewards(Life,RewardPolicy,Difficulty,checkpoint?.World);
             soundState.Observe(Life[0]);
             Life.BindProfile(0, profileId ?? (Life.Capture().Profiles[0] != Guid.Empty ? Life.Capture().Profiles[0] : Guid.NewGuid()));

@@ -35,7 +35,7 @@ namespace SpaceCrawler.Tests.PlayMode
         private void Submit(string name)
         {
             var button=root.CurrentScreen.View.Q<Button>(name);Assert.That(button,Is.Not.Null);Assert.That(button.enabledInHierarchy,Is.True,name);
-            using(var evt=NavigationSubmitEvent.GetPooled()){evt.target=button;button.SendEvent(evt);}
+            using(var evt=NavigationSubmitEvent.GetPooled()){evt.target=button;button.SendEvent(evt);SessionDiagnostics.ConfirmNewRun(root.CurrentScreen);}
         }
         [UnityTest] public IEnumerator MenuAndPauseOptionsPersistAndCannotResumeOrTriggerUnderlyingButtons()
         {

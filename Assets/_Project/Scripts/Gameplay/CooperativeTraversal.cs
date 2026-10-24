@@ -149,7 +149,7 @@ namespace SpaceCrawler.Gameplay
             loadedRoom=new RunRoomId(incoming.destination);
             if(loadedRoom.Value!=playerRooms[0])throw new InvalidOperationException("Host room descriptor mismatch.");
             SendJson(AckMessage,NetworkManager.ServerClientId,JsonUtility.ToJson(new RoomLoadAcknowledgment{
-                epoch=epoch,room=loadedRoom.Value,level=LevelNumber,fingerprint=Fingerprint,profileId=profileId.ToString("N")}));
+                epoch=epoch,room=loadedRoom.Value,level=LevelNumber,fingerprint=Fingerprint,profileId=profileId.ToString("N"),classId=selectedClass}));
             Changed?.Invoke();
         }
         private void AdvanceCooperativeEnemies()

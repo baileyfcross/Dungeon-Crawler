@@ -8,7 +8,7 @@ namespace SpaceCrawler.Gameplay
 
     [Serializable] public sealed class RunSessionDescriptor
     {
-        public int protocol = 11, generationVersion, currentRoom, destination, state;
+        public int protocol = 12, generationVersion, currentRoom, destination, state;
         public string runId;
         public int level = 1, sequenceVersion;
         public bool levels;
@@ -18,9 +18,11 @@ namespace SpaceCrawler.Gameplay
         public int difficulty,encounterVersion,rewardVersion,rewardBaseXp;
         public float[] rewardFactors;
         public int[] playerRooms, explored;
+        public string[] classes;
+        public bool classesLocked;
     }
     [Serializable] public sealed class RoomLoadAcknowledgment
-    { public uint epoch; public int room, level; public string fingerprint, profileId; }
+    { public uint epoch; public int room, level; public string fingerprint, profileId, classId; }
     [Serializable] public sealed class RunEndMessage
     { public string runId; public long xp; public int reason, percent; public string[] profiles; }
     [Serializable] public sealed class RewardAcknowledgment

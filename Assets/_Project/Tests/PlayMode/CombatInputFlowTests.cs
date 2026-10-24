@@ -203,7 +203,7 @@ namespace SpaceCrawler.Tests.PlayMode
         private void Submit(string name)
         {
             var button = root.CurrentScreen.View.Q<Button>(name);
-            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); }
+            using (var submit = NavigationSubmitEvent.GetPooled()) { submit.target = button; button.SendEvent(submit); SessionDiagnostics.ConfirmNewRun(root.CurrentScreen); }
         }
         // Unity 6000.3's default UI event system ignores unfocused desktop input, even when
         // Input System's IgnoreFocus is enabled. Batch tests have no focused Game view.
