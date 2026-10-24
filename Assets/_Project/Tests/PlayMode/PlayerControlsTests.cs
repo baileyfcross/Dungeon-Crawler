@@ -60,6 +60,25 @@ namespace SpaceCrawler.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator ShiftSprintReleasesAndDoesNotSurvivePauseOrFocusLoss()
+        {
+            InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.D,Key.LeftShift));
+            yield return WaitFor(()=>session.Simulation.DesiredVelocity.X>7.4f);
+            Assert.That(session.Simulation.DesiredVelocity.Length(),Is.EqualTo(7.5f).Within(.01f));
+            InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.D));
+            yield return WaitFor(()=>Mathf.Abs(session.Simulation.DesiredVelocity.X-5)<.01f);
+            root.Flow.TryRequest(ApplicationCommand.Pause);
+            Assert.That(session.Simulation.DesiredVelocity.Length(),Is.Zero);
+            InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.LeftShift));yield return Frames(2);
+            root.Flow.TryRequest(ApplicationCommand.Resume);yield return Frames(3);
+            InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.D,Key.LeftShift));
+            yield return WaitFor(()=>session.Simulation.DesiredVelocity.X>4.9f);
+            Assert.That(session.Simulation.DesiredVelocity.Length(),Is.EqualTo(5).Within(.01f),"Held sprint must be released after resuming.");
+            session.Input.HandleFocus(false);yield return Frames(2);
+            Assert.That(session.Simulation.DesiredVelocity.Length(),Is.Zero);
+        }
+
+        [UnityTest]
         public IEnumerator KeyboardMovementIsIndependentClampedAndBlockedByBoundary()
         {
             foreach (var entry in new[] { (Key.W, Vector2.up), (Key.A, Vector2.left), (Key.S, Vector2.down), (Key.D, Vector2.right) })

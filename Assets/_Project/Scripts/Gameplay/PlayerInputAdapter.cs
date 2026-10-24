@@ -12,7 +12,8 @@ namespace SpaceCrawler.Gameplay
     {
         [SerializeField] private InputActionAsset actions;
         private InputActionMap playerMap;
-        private InputAction move, aim, pause, attack, interact;
+        private InputAction move, aim, pause, attack, interact, sprint;
+        private bool sprintNeedsRelease;
         private bool interactNeedsRelease;
         private Vector2Control pointer, stick;
         private bool useStick, movementNeedsNeutral, stickNeedsNeutral;
@@ -44,6 +45,7 @@ namespace SpaceCrawler.Gameplay
             pause = playerMap.FindAction("Pause", true);
             attack = playerMap.FindAction("Attack", true);
             interact = playerMap.FindAction("Interact", true);
+            sprint = playerMap.FindAction("Sprint", true);
             aim.performed += ObserveAimDevice;
             flow.StateChanged += ApplyGate;
             ApplyGate(flow.State);
@@ -60,17 +62,19 @@ namespace SpaceCrawler.Gameplay
                 stickNeedsNeutral = true;
                 attackNeedsRelease = true;
                 interactNeedsRelease = true;
+                sprintNeedsRelease = true;
                 move.Enable();
                 aim.Enable();
                 attack.Enable();
                 interact.Enable();
+                sprint.Enable();
                 foreach (var control in aim.controls)
                 {
                     if (control.device is Pointer && control is Vector2Control position) pointer = position;
                     if (control.device is Gamepad && control is Vector2Control rightStick) stick = rightStick;
                 }
             }
-            else { move.Disable(); aim.Disable(); attack.Disable(); interact.Disable(); }
+            else { move.Disable(); aim.Disable(); attack.Disable(); interact.Disable(); sprint.Disable(); }
             if (focused && (state == ApplicationState.Gameplay || state == ApplicationState.Paused)) pause.Enable();
             else pause.Disable();
         }
@@ -86,6 +90,7 @@ namespace SpaceCrawler.Gameplay
             }
             if (!GameplayInputEnabled || Time.frameCount <= activationFrame) return;
             if (!interact.IsPressed()) interactNeedsRelease = false;
+            if (!sprint.IsPressed()) sprintNeedsRelease = false;
             commands.Interact(commands.State.Player, !interactNeedsRelease && interact.IsPressed());
             var direction = move.ReadValue<Vector2>();
             if (movementNeedsNeutral)
@@ -93,7 +98,7 @@ namespace SpaceCrawler.Gameplay
                 if (direction.sqrMagnitude < 0.000001f) movementNeedsNeutral = false;
                 return;
             }
-            commands.Move(new MoveIntent(commands.State.Player, new CoreVector(direction.x, direction.y)));
+            commands.Move(new MoveIntent(commands.State.Player, new CoreVector(direction.x, direction.y), !sprintNeedsRelease && sprint.IsPressed()));
         }
 
         private void ObserveAimDevice(InputAction.CallbackContext context)

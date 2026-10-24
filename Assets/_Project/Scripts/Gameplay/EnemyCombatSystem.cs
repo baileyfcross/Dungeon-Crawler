@@ -13,7 +13,11 @@ namespace SpaceCrawler.Gameplay
         private readonly Func<int, Vector2> position;
         private readonly Func<RunLife> life;
         private readonly Action<PlayerIdentity, Guid, int> damage;
-        private readonly Dictionary<EnemyActor, Route> routes = new Dictionary<EnemyActor, Route>();
+        private Dictionary<EnemyActor, Route> routes = new Dictionary<EnemyActor, Route>();
+        private sealed class RoomPaths
+        { public RoomNavigation Navigation; public readonly Dictionary<EnemyActor,Route> Routes = new Dictionary<EnemyActor,Route>(); }
+        private readonly Dictionary<AuthoredRoom,RoomPaths> contexts = new Dictionary<AuthoredRoom,RoomPaths>();
+        private RoomNavigation sharedNavigation;
         private RoomNavigation navigation;
         private AuthoredRoom room;
         private float clock;
@@ -24,11 +28,21 @@ namespace SpaceCrawler.Gameplay
 
         public void Advance(AuthoredRoom current, bool running, float seconds)
         {
+            var retired=new List<AuthoredRoom>();
+            foreach(var existing in contexts.Keys)if(existing==null)retired.Add(existing);
+            foreach(var existing in retired){contexts[existing].Navigation.Dispose();contexts.Remove(existing);}
             // Unity's destroyed objects compare equal to null but still have managed fields.
             // A failed room replacement must never tick the retired encounter's components.
-            if (current == null) { room = null; routes.Clear(); return; }
-            if (room != current) { room = current; routes.Clear(); if (room?.Encounter != null && HasMelee()) { navigation ??= new RoomNavigation(owner); navigation.Build(room); } }
+            if (current == null) { room = null; return; }
+            room=current;
             if (room?.Encounter == null || !HasMelee()) return;
+            if(!contexts.TryGetValue(room,out var context))
+            {
+                sharedNavigation ??= new RoomNavigation(owner);
+                context=new RoomPaths{Navigation=new RoomNavigation(owner,sharedNavigation)};
+                context.Navigation.Build(room);contexts.Add(room,context);
+            }
+            navigation=context.Navigation;routes=context.Routes;
             clock += seconds;
             foreach (var enemy in room.Encounter.Enemies)
             {
@@ -38,8 +52,9 @@ namespace SpaceCrawler.Gameplay
                 for (var i = 0; i < observations.Length; i++)
                 {
                     var point = position(i);
-                    observations[i] = new EnemyObservation(new PlayerIdentity(i + 1), Core(point), model[i].State == PlayerLifeState.Alive,
-                        RoomNavigation.ClearSight(origin, point), navigation.Reachable(origin, point));
+                    bool alive = model[i].State == PlayerLifeState.Alive && room.PlayableBounds.Contains(room.transform.InverseTransformPoint(point));
+                    observations[i] = new EnemyObservation(new PlayerIdentity(i + 1), Core(point), alive,
+                        alive && RoomNavigation.ClearSight(origin, point), alive && navigation.Reachable(origin, point));
                 }
                 brain.Advance(seconds, Core(origin), observations, running && !model.Ended);
                 enemy.SynchronizeBehaviour();
@@ -68,6 +83,8 @@ namespace SpaceCrawler.Gameplay
         private bool HasMelee() { foreach (var enemy in room.Encounter.Enemies) if (enemy != null && enemy.Behaviour != null) return true; return false; }
         private static CoreVector Core(Vector2 value) => new CoreVector(value.x, value.y);
         private static Vector2 Unity(CoreVector value) => new Vector2(value.X, value.Y);
-        public void Dispose() { routes.Clear(); navigation?.Dispose(); }
+        public void ClearRooms()
+        { foreach(var entry in contexts.Values)entry.Navigation.Dispose();contexts.Clear();routes.Clear();room=null; }
+        public void Dispose() { ClearRooms();sharedNavigation?.Dispose();sharedNavigation=null; }
     }
 }

@@ -16,8 +16,9 @@ namespace SpaceCrawler.Gameplay
         private GridGraph graph;
         public int PathRequests { get; private set; }
 
-        public RoomNavigation(Transform parent)
+        public RoomNavigation(Transform parent, RoomNavigation shared = null)
         {
+            if(shared!=null){astar=shared.astar;return;}
             owner = new GameObject("RoomNavigation"); owner.transform.SetParent(parent, false); owner.SetActive(false);
             astar = owner.AddComponent<AstarPath>(); astar.scanOnStartup = false;
             astar.threadCount = ThreadCount.None; astar.logPathResults = PathLog.None;
@@ -50,8 +51,10 @@ namespace SpaceCrawler.Gameplay
         public bool Reachable(Vector2 from, Vector2 to)
         {
             if (graph == null) return false;
-            var start = graph.GetNearest(from, NNConstraint.Default).node;
-            var end = graph.GetNearest(to, NNConstraint.Default).node;
+            // GridGraph.GetNearest returns an unconstrained cell, which may be blocked beside a wall.
+            // Constrain both endpoints to walkable cells in this room's graph.
+            var start = graph.GetNearestForce(from, NNConstraint.Default).node;
+            var end = graph.GetNearestForce(to, NNConstraint.Default).node;
             return start != null && end != null && ((Vector3)start.position - (Vector3)from).sqrMagnitude < 1
                 && ((Vector3)end.position - (Vector3)to).sqrMagnitude < 1 && PathUtilities.IsPathPossible(start, end);
         }
@@ -90,6 +93,10 @@ namespace SpaceCrawler.Gameplay
                 if (IsSolid(hit.collider)) length = Mathf.Min(length, Mathf.Max(0, hit.distance - .02f));
             return position + direction * length;
         }
-        public void Dispose() { if (owner != null) { owner.SetActive(false); UnityEngine.Object.Destroy(owner); } }
+        public void Dispose()
+        {
+            if(astar!=null && graph!=null){astar.FlushWorkItems();astar.data.RemoveGraph(graph);graph=null;}
+            if (owner != null) { owner.SetActive(false); UnityEngine.Object.Destroy(owner); }
+        }
     }
 }

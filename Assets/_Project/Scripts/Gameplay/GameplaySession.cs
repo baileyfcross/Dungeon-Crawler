@@ -25,6 +25,7 @@ namespace SpaceCrawler.Gameplay
         public PlayerSimulation Simulation { get; private set; }
         public DungeonGraph Run { get; private set; }
         public RunSequence Sequence { get; private set; }
+        public RunDifficulty Difficulty { get; private set; }
         public int LevelNumber => Sequence?.LevelNumber ?? 1;
         public PlayerMotor Motor => motor;
         public PlayerInputAdapter Input => input;
@@ -50,7 +51,7 @@ namespace SpaceCrawler.Gameplay
 
         public void Bind(PlayerIdentity identity, ApplicationFlow flow, ulong? runSeed = null, bool useLevelSequence = false,
             RunCheckpoint checkpoint = null, Action<RunCheckpoint> save = null, WeaponDefinition restoredWeapon = null,
-            Guid? profileId = null, Action<RunEndReceipt> finish = null)
+            Guid? profileId = null, Action<RunEndReceipt> finish = null, RunDifficulty difficulty = RunDifficulty.Legacy)
         {
             if (Simulation != null) throw new InvalidOperationException("Session is already bound.");
             if (generation == null) throw new InvalidOperationException("Missing run generation definition.");
@@ -59,6 +60,7 @@ namespace SpaceCrawler.Gameplay
             var seed = runSeed ?? (Debug.isDebugBuild && useFixedSeed ? fixedSeed : CreateRunSeed());
             commitCheckpoint = save; this.flow = flow; endRun = finish;
             Persistence = new RunWorldPersistence(checkpoint?.World);
+            DifficultyRules.Factor(difficulty); Difficulty=checkpoint?.Difficulty ?? difficulty;
             Life = new RunLife(checkpoint?.Life ?? RunLifeSnapshot.Fresh(1));
             soundState.Observe(Life[0]);
             Life.BindProfile(0, profileId ?? (Life.Capture().Profiles[0] != Guid.Empty ? Life.Capture().Profiles[0] : Guid.NewGuid()));
@@ -109,7 +111,7 @@ namespace SpaceCrawler.Gameplay
             if (Life.Ended || rooms?.CurrentRoom == null) return;
             var world = Persistence.Capture(LevelNumber,progression.CurrentRoomId,rooms.CurrentRoom,new[] {motor},new[] {Simulation},new[] {combat});
             if (commitCheckpoint != null && Sequence != null)
-                Persistence.Commit(RunCheckpoint.Capture(Sequence,progression,SavedSessionMode.Solo,new[] {combat.Simulation.EquippedWeapon.Id},Life.Capture(),world),commitCheckpoint);
+                Persistence.Commit(RunCheckpoint.Capture(Sequence,progression,SavedSessionMode.Solo,new[] {combat.Simulation.EquippedWeapon.Id},Life.Capture(),world,Difficulty),commitCheckpoint);
         }
 
         public void SaveCurrent()

@@ -30,7 +30,7 @@ namespace SpaceCrawler.Gameplay
             {
                 var anchor = new GameObject("EnemySpawn").transform;
                 anchor.SetParent(room.ContentRoot);
-                anchor.position = count == 1 ? new Vector3(0, 5, 0) : new Vector3((i % 8 - 3.5f) * 1.5f, 5 + i / 8 * 1.5f, 0);
+                anchor.position = room.transform.TransformPoint(count == 1 ? new Vector3(0, 5, 0) : new Vector3((i % 8 - 3.5f) * 1.5f, 5 + i / 8 * 1.5f, 0));
                 spawns[i] = new EnemySpawn(i + 1, room.Targets[0], anchor);
             }
             return spawns;
@@ -78,7 +78,7 @@ namespace SpaceCrawler.Gameplay
         }
         private void Update()
         {
-            if(SessionDiagnostics.Option("--session-validation")=="audio")return;
+            if(SessionDiagnostics.Option("--session-validation")=="audio" || SessionDiagnostics.Option("--session-validation").StartsWith("exploration"))return;
             if (session == null || session.Run == null || session.WeaponName != "weapon.blaster" || session.Players[1] == null) return;
             if (Host && !cleanupShot && session.CurrentRoom.Value == 0 && Time.realtimeSinceStartupAsDouble - began > 9
                 && session.Players[1].State.Position.X < -4.5f && session.Players[1].State.Position.Y > 11.25f)
@@ -89,6 +89,7 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             yield return Until(() => session.RoomReady, "initial room handshake");
+            if(SessionDiagnostics.Option("--session-validation").StartsWith("exploration")){yield return RunExploration();yield break;}
             if(SessionDiagnostics.Option("--session-validation")=="audio"){yield return RunAudio();yield break;}
             if (SessionDiagnostics.Option("--session-validation") == "traversal" || SessionDiagnostics.Option("--session-validation") == "traversal-resume")
             { yield return RunTraversal(); yield break; }
@@ -259,8 +260,9 @@ namespace SpaceCrawler.Gameplay
                 yield return Until(() => session.Rooms.CurrentRoom.Encounter.Enemies.Count == 1
                     && session.Rooms.CurrentRoom.Encounter.Enemies[0].Target.DisplayedHealth == 0,"dead enemy restored on both peers");
                 Check(session.Vitals(0).Current == 1 && session.Vitals(1).State == PlayerLifeState.Downed,"per-run health restored");
-                Check(CoreVector.Distance(session.Players[0].State.Position,new CoreVector(-2,3)) < .02f
-                    && CoreVector.Distance(session.Players[1].State.Position,new CoreVector(2,3)) < .02f,"both exact positions restored");
+                var offset=(Vector2)session.Rooms.CurrentRoom.transform.position;
+                Check(CoreVector.Distance(session.Players[0].State.Position,new CoreVector(offset.x-2,offset.y+3)) < .02f
+                    && CoreVector.Distance(session.Players[1].State.Position,new CoreVector(offset.x+2,offset.y+3)) < .02f,"both exact positions restored");
                 Check(session.Players[0].State.AimDirection.Y > .99f && session.Players[1].State.AimDirection.Y < -.99f,"both aim directions restored");
                 Check(session.Players[1].ReviveProgress == 0,"revive hold cleared on Continue");
                 Record("TRAVERSAL-RESUME-PASS");
@@ -288,9 +290,16 @@ namespace SpaceCrawler.Gameplay
             yield return Door(leave);
             yield return Door(session.Run.Connections.Single(e=>e.From.Equals(leave.To) && e.To.Equals(encounter)));
             Check(session.Rooms.CurrentRoom.Encounter.Enemies[0].Target.DisplayedHealth == 0,"dead enemy stays dead after revisit");
+            yield return Until(()=>session.PlayerRoom(0).Equals(encounter) && session.PlayerRoom(1).Equals(encounter),"both independent routes return to the encounter");
+            var meeting=(Vector2)session.Rooms.CurrentRoom.transform.position;
+            yield return Walk(meeting.x+(Host?-2:2),meeting.y+3);
+            yield return Until(()=>CoreVector.Distance(session.Players[0].State.Position,new CoreVector(meeting.x-2,meeting.y+3))<.2f
+                && CoreVector.Distance(session.Players[1].State.Position,new CoreVector(meeting.x+2,meeting.y+3))<.2f
+                && session.Players.All(p=>p.State.Velocity.LengthSquared()<.01f),"both players finish movement before the downed save fixture");
             if (Host)
             {
-                session.Players[0].Motor.PlaceAt(new Vector2(-2,3)); session.Players[1].Motor.PlaceAt(new Vector2(2,3));
+                var offset=(Vector2)session.Rooms.CurrentRoom.transform.position;
+                session.Players[0].Motor.PlaceAt(offset+new Vector2(-2,3)); session.Players[1].Motor.PlaceAt(offset+new Vector2(2,3));
                 session.Players[0].Simulation.RestoreAim(CoreVector.UnitY); session.Players[1].Simulation.RestoreAim(-CoreVector.UnitY);
                 session.DamagePlayer(new PlayerIdentity(1),Guid.NewGuid(),session.Life[0].Current-1); session.DamagePlayer(new PlayerIdentity(2),Guid.NewGuid(),100);
                 session.SaveCurrent();
@@ -314,7 +323,8 @@ namespace SpaceCrawler.Gameplay
                 yield return Until(() => session.CurrentRoom.Equals(edge.To) && session.RoomReady, "physical traversal to authored encounter");
             }
             var enemy = session.Rooms.CurrentRoom.Encounter.Enemies[0]; var start = enemy.transform.position;
-            yield return Walk(Host ? -1 : 1,3);
+            var localOffset=(Vector2)session.Rooms.CurrentRoom.transform.position;
+            yield return Walk(localOffset.x+(Host ? -1 : 1),localOffset.y+3);
             Check(enemy.Configuration != null && (Host ? enemy.Behaviour != null : enemy.Behaviour == null && enemy.Simulation == null), "melee authority boundary");
             yield return Until(() => Vector3.Distance(start, enemy.transform.position) > .5f, "moving enemy replicated");
             yield return Until(() => enemy.BehaviourState == EnemyBehaviourState.Windup && enemy.WindupProgress > .05f, "readable windup on each peer");
@@ -335,7 +345,7 @@ namespace SpaceCrawler.Gameplay
             var exitPosition = session.Rooms.CurrentRoom.ExitFor(exits[0],exits).transform.position;
             yield return Walk(exitPosition.x,exitPosition.y);
             yield return Until(() => !session.CurrentRoom.Equals(before) && session.RoomReady, "shared transition and enemy cleanup");
-            Check(!Host || oldModel.Lifecycle == EnemyLifecycle.Despawned, "old encounter retired");
+            Check(!Host || oldModel.Lifecycle == (session.IndependentTravel?EnemyLifecycle.Dead:EnemyLifecycle.Despawned), "old encounter cannot produce a second death");
             Check(session.Rooms.RoomContainer.childCount == 1 && session.RunXp == 0, "one room and no unintended XP");
             Record("MELEE-PASS");
             if (!Host) { yield return new WaitForSeconds(1); Application.Quit(0); }
@@ -354,6 +364,47 @@ namespace SpaceCrawler.Gameplay
                 { var next = new List<RoomConnection>(path) { edge }; queue.Enqueue(next); }
             }
             return route;
+        }
+
+        private IEnumerator RunExploration()
+        {
+            Local.Input.HandleFocus(true);flow.TryRequest(ApplicationCommand.Resume);began=Time.realtimeSinceStartupAsDouble;
+            bool restoring=SessionDiagnostics.Option("--session-validation")=="exploration-resume";
+            Check(session.IndependentTravel && session.LevelNumber==1,"shared level with independent room authority");
+            if(!restoring)
+            {
+                Check(session.Map.Rooms.Count==1 && session.Rooms.CurrentRoom.Encounter.Enemies.Count==0,"only safe starting room revealed");
+                session.LocalCommands.Move(new MoveIntent(new PlayerIdentity(session.LocalPlayer),CoreVector.UnitX,true));
+                yield return Until(()=>Local.State.Velocity.Length()>7.3f,"authoritative sprint velocity");
+                Move(CoreVector.Zero);yield return At(1);
+                if(Host)
+                {
+                    var edge=session.Progression.Choices.First(e=>!session.Run.GetRoom(e.To).IsTerminal);
+                    Local.Motor.PlaceAt(session.Rooms.CurrentRoom.ExitFor(edge,session.Progression.Choices).transform.position);
+                }
+            }
+            yield return Until(()=>session.RoomReady && !session.PlayerRoom(0).Equals(session.PlayerRoom(1)),"independent rooms replicated");
+            Check(session.Map.Rooms.Count==2 && session.Map.PlayerRooms.Count==2,"shared discovery without hidden rooms");
+            Check(session.Map.PlayerRooms[0].Equals(session.PlayerRoom(0)) && session.Map.PlayerRooms[1].Equals(session.PlayerRoom(1)),"distinct player room markers");
+            var room=session.PlayerRoomLoader(0).CurrentRoom;
+            Check(room.Encounter.Enemies.Count==3 && session.Difficulty==RunDifficulty.Normal,"normal encounter count replicated");
+            if(!restoring && Host)
+            {
+                var enemy=room.Encounter.Enemies[0];
+                enemy.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1),8701,enemy.Target.Identity,100),out _);
+                session.SaveCurrent();
+            }
+            yield return Until(()=>room.Encounter.Enemies[0].Lifecycle==EnemyLifecycle.Dead,"dead enemy persists across split-room save or replication");
+            if(Host)session.SaveCurrent();
+            var evidence=SessionDiagnostics.Option("--exploration-evidence");
+            if(!string.IsNullOrEmpty(evidence))
+            {
+                System.IO.Directory.CreateDirectory(evidence);
+                var root=GameAudio.Current.GetComponent<ApplicationRoot>();
+                yield return SteamSessionValidationDriver.CapturePanel(root.CurrentScreen,System.IO.Path.Combine(evidence,session.Mode+"-map.png"),1280,720);
+            }
+            Record(restoring?"EXPLORATION-RESUME-PASS":"EXPLORATION-PASS");
+            if(!Host){yield return new WaitForSeconds(1);Application.Quit(0);}
         }
 
         private IEnumerator RunAudio()

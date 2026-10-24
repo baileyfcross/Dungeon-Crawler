@@ -272,8 +272,9 @@ namespace SpaceCrawler.Tests.PlayMode
                 Assert.That(room.Targets, Is.Empty, "Normal play must not contain stationary combat fixtures.");
                 Assert.That(room.GetComponentsInChildren<DamageableTarget>(true).Length, Is.EqualTo(room.Encounter.Enemies.Count));
             }
-            Assert.That(room.Encounter.Enemies.Count, Is.EqualTo(node.Category == RoomCategory.Engine && !node.IsTerminal ? 1 : 0),
-                "Only nonterminal Engine rooms receive the authored melee encounter.");
+            var expected=node.IsTerminal || node.Id.Equals(session.Run.StartRoomId)?0:
+                session.Difficulty==RunDifficulty.Legacy ? (node.Category==RoomCategory.Engine?1:0):session.Difficulty==RunDifficulty.Easy?2:session.Difficulty==RunDifficulty.Hard?5:3;
+            Assert.That(room.Encounter.Enemies.Count,Is.EqualTo(expected),"Encounters follow difficulty while starting and level-exit rooms remain safe.");
             var definition = AssetDatabase.LoadAssetAtPath<RoomDefinition>($"Assets/_Project/Data/Rooms/{node.Category}.asset");
             Assert.That(Rooms.CurrentPrefab, Is.SameAs(definition.RoomPrefab));
             if (session.Run.GenerationVersion == 1) Assert.That(session.Motor.Body.position, Is.EqualTo((Vector2)room.PlayerSpawnAnchor.position));

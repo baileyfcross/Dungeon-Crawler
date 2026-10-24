@@ -27,8 +27,9 @@ namespace SpaceCrawler.Gameplay
                 {
                     var actor = actors.SingleOrDefault(a => a.Identity.Spawn == state.Spawn);
                     if (actor == null || actor.Target.InitialHealth != state.Maximum) throw new InvalidOperationException("Saved enemy slot no longer matches authoring.");
-                    var value = state;
-                    if (!room.IsSafePosition(new Vector2(state.Position.X,state.Position.Y)))
+                    var position = new Vector2(state.Position.X,state.Position.Y)+(Vector2)room.transform.position;
+                    var value = new SavedEnemy(state.Spawn,state.Health,state.Maximum,ToCore(position),state.Facing);
+                    if (!room.IsSafePosition(position))
                     { value = new SavedEnemy(state.Spawn,state.Health,state.Maximum,ToCore(actor.transform.position),state.Facing); Recovered(); }
                     actor.Restore(value);
                 }
@@ -48,28 +49,40 @@ namespace SpaceCrawler.Gameplay
         public void PlacePlayers(AuthoredRoom room, int arrivalPort, PlayerMotor[] motors, PlayerSimulation[] simulations, CombatResolver[] combat)
         {
             for (int i = 0; i < motors.Length; i++)
-            {
-                var position = room.Arrival(arrivalPort,i,motors.Length);
+                PlacePlayer(room,arrivalPort,i,motors.Length,motors[i],simulations[i],combat[i]);
+            if (restoredPlayers != null) room.SuppressOccupiedExits(motors);
+            FinishPlacingPlayers();
+        }
+        internal void PlacePlayer(AuthoredRoom room,int arrivalPort,int slot,int count,PlayerMotor motor,PlayerSimulation simulation,CombatResolver combat)
+        {
+                var position = room.Arrival(arrivalPort,slot,count);
                 if (restoredPlayers != null)
                 {
-                    var pose = restoredPlayers[i]; var saved = new Vector2(pose.Position.X,pose.Position.Y);
+                    var pose = restoredPlayers[slot]; var saved = new Vector2(pose.Position.X,pose.Position.Y)+(Vector2)room.transform.position;
                     if (room.IsSafePosition(saved)) position = saved; else Recovered();
-                    simulations[i].RestoreAim(pose.Aim); combat[i].Simulation.RestoreCooldown(pose.Cooldown);
+                    simulation.RestoreAim(pose.Aim); combat.Simulation.RestoreCooldown(pose.Cooldown);
                 }
-                motors[i].Stop(); motors[i].PlaceAt(position);
-            }
-            if (restoredPlayers != null) room.SuppressOccupiedExits(motors);
-            restoredPlayers = null;
+                motor.Stop(); motor.PlaceAt(position);
+        }
+        internal void FinishPlacingPlayers() => restoredPlayers=null;
+        internal void CaptureRoom(int level,RunRoomId id,AuthoredRoom room)
+        {
+            var offset=(Vector2)room.transform.position;
+            var savedEnemies = room.Encounter.Enemies.Select(a => new SavedEnemy(a.Identity.Spawn,a.Target.Health.Current,a.Target.Health.Maximum,
+                ToCore((Vector2)a.transform.position-offset),new CoreVector(a.Facing.x,a.Facing.y))).ToArray();
+            rooms[(level,id.Value)] = new SavedRoomState(level,id,savedEnemies);
+        }
+        internal RunWorldSnapshot CapturePlayers(PlayerMotor[] motors,PlayerSimulation[] simulations,CombatResolver[] combat,AuthoredRoom[] playerRooms)
+        {
+            var poses = new SavedPlayerPose[motors.Length];
+            for (int i = 0; i < poses.Length; i++) poses[i] = new SavedPlayerPose(ToCore(motors[i].Body.position-(Vector2)playerRooms[i].transform.position),simulations[i].State.AimDirection,combat[i].Simulation.CooldownRemaining);
+            return new RunWorldSnapshot(poses,rooms.Values.OrderBy(r => r.Level).ThenBy(r => r.Room.Value).ToArray());
         }
         public RunWorldSnapshot Capture(int level, RunRoomId id, AuthoredRoom room, PlayerMotor[] motors, PlayerSimulation[] simulations, CombatResolver[] combat)
         {
             if (room?.Encounter == null) throw new InvalidOperationException("An entered room is required for world state.");
-            var savedEnemies = room.Encounter.Enemies.Select(a => new SavedEnemy(a.Identity.Spawn,a.Target.Health.Current,a.Target.Health.Maximum,
-                ToCore(a.transform.position),new CoreVector(a.Facing.x,a.Facing.y))).ToArray();
-            rooms[(level,id.Value)] = new SavedRoomState(level,id,savedEnemies);
-            var poses = new SavedPlayerPose[motors.Length];
-            for (int i = 0; i < poses.Length; i++) poses[i] = new SavedPlayerPose(ToCore(motors[i].Body.position),simulations[i].State.AimDirection,combat[i].Simulation.CooldownRemaining);
-            return new RunWorldSnapshot(poses,rooms.Values.OrderBy(r => r.Level).ThenBy(r => r.Room.Value).ToArray());
+            CaptureRoom(level,id,room);
+            return CapturePlayers(motors,simulations,combat,Enumerable.Repeat(room,motors.Length).ToArray());
         }
         public void Commit(RunCheckpoint checkpoint, Action<RunCheckpoint> save)
         {

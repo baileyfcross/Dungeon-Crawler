@@ -8,7 +8,7 @@ namespace SpaceCrawler.Gameplay
     {
         [SerializeField, Min(.01f)] private float speed = 3, detection = 7, reach = 1.5f, windup = .6f, recovery = .8f, lostTargetSeconds = 3;
         [SerializeField, Min(1)] private int damage = 20;
-        public MeleeEnemyConfiguration CreateConfiguration()
-            => new MeleeEnemyConfiguration(speed, detection, reach, windup, recovery, lostTargetSeconds, damage);
+        public MeleeEnemyConfiguration CreateConfiguration(RunDifficulty difficulty = RunDifficulty.Legacy)
+            => new MeleeEnemyConfiguration(speed, detection, reach, windup, recovery, lostTargetSeconds, DifficultyRules.Scale(damage,difficulty));
     }
 }

@@ -11,7 +11,7 @@ namespace SpaceCrawler.Gameplay
         private readonly Action<PlayerInputMessage, bool> submit;
         private Vector2 move, aim = Vector2.right;
         private ulong sequence, attackSequence;
-        private bool interactHeld, hasAim;
+        private bool interactHeld, hasAim, sprint;
         public PlayerState State => state();
         public bool InputActive { get; private set; }
         public NetworkPlayerCommands(Func<PlayerState> state, Func<uint> epoch, Action<PlayerInputMessage, bool> submit)
@@ -19,13 +19,13 @@ namespace SpaceCrawler.Gameplay
         public void SetInputActive(bool active)
         {
             InputActive = active;
-            if (!active) { move = Vector2.zero; interactHeld = false; }
+            if (!active) { move = Vector2.zero; interactHeld = false; sprint = false; }
             Send(true, false);
         }
         public bool Move(MoveIntent intent)
         {
             if (!InputActive || !State.Player.Equals(intent.Player)) return false;
-            move = new Vector2(intent.Direction.X, intent.Direction.Y); return true;
+            move = new Vector2(intent.Direction.X, intent.Direction.Y); sprint = intent.Sprint; return true;
         }
         public bool Aim(AimIntent intent)
         {
@@ -49,6 +49,7 @@ namespace SpaceCrawler.Gameplay
         {
             submit(new PlayerInputMessage { Epoch = epoch(), Sequence = ++sequence, AttackSequence = attack ? ++attackSequence : 0,
                 ClaimedPlayer = State.Player.Value, Active = InputActive, InteractHeld = InputActive && interactHeld,
+                Sprint = InputActive && sprint,
                 Move = InputActive ? move : Vector2.zero, Aim = hasAim ? aim : new Vector2(State.AimDirection.X,State.AimDirection.Y) }, reliable);
         }
     }

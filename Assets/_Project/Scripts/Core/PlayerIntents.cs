@@ -6,7 +6,9 @@ namespace SpaceCrawler.Core
     {
         public PlayerIdentity Player { get; }
         public Vector2 Direction { get; }
-        public MoveIntent(PlayerIdentity player, Vector2 direction) { Player = player; Direction = direction; }
+        public bool Sprint { get; }
+        public MoveIntent(PlayerIdentity player, Vector2 direction, bool sprint = false)
+        { Player = player; Direction = direction; Sprint = sprint; }
     }
 
     public readonly struct AimIntent

@@ -64,7 +64,7 @@ namespace SpaceCrawler.Gameplay
                 if(CurrentMultiplayer?.Failure!=null)return "Connection interrupted. Return to Main Menu; the host keeps the last saved run. Continue requires the original host and teammate.";
                 if(!SteamReady)return "Steam is unavailable. Solo play and local saves remain available. Sign in to Steam and restart the game for co-op. Saves do not sync between computers.";
                 if(!SteamProfileAssociated)return "Link this profile to this Steam account to enable co-op. Existing XP and saves are backed up first. Other Steam accounts use separate profiles.";
-                if(SteamSessionActive && CurrentMultiplayer?.RoomReady==true)return "Co-op connected. Both players must use the same doorway to travel.";
+                if(SteamSessionActive && CurrentMultiplayer?.RoomReady==true)return "Co-op connected. Explore rooms independently; meet at the level exit to advance.";
                 return lobbies?.Status ?? "Steam ready. Host a private session or accept a friend's invitation. Saves are stored on this computer.";
             }
         }
@@ -76,6 +76,13 @@ namespace SpaceCrawler.Gameplay
 #endif
 
         public ApplicationFlow Flow { get; private set; }
+        public RunDifficulty SelectedDifficulty { get; private set; } = RunDifficulty.Normal;
+        private RunDifficulty StartingDifficulty => Debug.isDebugBuild && SessionDiagnostics.Option("--run-difficulty")=="standard" ? RunDifficulty.Legacy : SelectedDifficulty;
+        public bool SelectDifficulty(RunDifficulty difficulty)
+        {
+            if(Flow.State!=ApplicationState.MainMenu || SteamBusy || SteamSessionActive || difficulty==RunDifficulty.Legacy)return false;
+            DifficultyRules.Factor(difficulty);SelectedDifficulty=difficulty;return true;
+        }
         public ApplicationScreen CurrentScreen { get; private set; }
         public GameplaySession CurrentGameplay { get; private set; }
         public MultiplayerSession CurrentMultiplayer { get; private set; }
@@ -343,7 +350,7 @@ namespace SpaceCrawler.Gameplay
                         CurrentGameplay = Instantiate(gameplaySession);
                         CurrentGameplay.Bind(new PlayerIdentity(1), Flow, useLevelSequence: true, checkpoint: pendingCheckpoint,
                             save: CommitCheckpoint, restoredWeapon: pendingCheckpoint != null ? multiplayerSession.ResolveWeapon(pendingCheckpoint.EquipmentIds[0]) : null,
-                            profileId: Profile.Id, finish: FinishRun);
+                            profileId: Profile.Id, finish: FinishRun, difficulty:StartingDifficulty);
                     }
                     else
                     {
@@ -359,12 +366,13 @@ namespace SpaceCrawler.Gameplay
                         ulong? seed = pendingSessionRole == SessionRole.Host && ulong.TryParse(SessionDiagnostics.Option("--session-seed"), out var requestedSeed) ? requestedSeed : (ulong?)null;
                         CurrentMultiplayer.Bind(pendingSessionRole, Flow, address, port, seed, useLevelSequence: true,
                             checkpoint: pendingCheckpoint, save: CommitCheckpoint, profileId: Profile.Id, finish: FinishRun,
-                            pendingRewards: progress.PendingFor, acknowledgeReward: progress.Acknowledge);
+                            pendingRewards: progress.PendingFor, acknowledgeReward: progress.Acknowledge,difficulty:StartingDifficulty);
                     }
                 }
                 else { CurrentGameplay = null; pendingSessionRole = SessionRole.None; }
                 CurrentScreen = Instantiate(screenPrefab);
                 CurrentScreen.Bind(Flow);
+                CurrentScreen.BindDifficulty(this);
                 BindSteamScreen();
                 CurrentScreen.BindRewards(id => runRewards.TryGetValue(id,out var summary) ? summary : null);
                 CurrentScreen.BindContinue(() => RequestContinue());

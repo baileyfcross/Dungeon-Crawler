@@ -9,7 +9,9 @@ namespace SpaceCrawler.Core
     /// <summary>Immutable room-entry data. Player slots are stable gameplay identities, not network IDs.</summary>
     public sealed class RunCheckpoint
     {
-        public const int SchemaVersion = 4;
+        public const int SchemaVersion = 5;
+        public RunDifficulty Difficulty { get; }
+        public IReadOnlyList<RunRoomId> PartnerRoomVisits { get; }
         public RunLifeSnapshot Life { get; }
         public RunWorldSnapshot World { get; }
         public int SourceSchemaVersion { get; }
@@ -33,7 +35,8 @@ namespace SpaceCrawler.Core
             RunRoomId currentRoom, IReadOnlyList<RunRoomId> roomVisits, IReadOnlyList<string> equipmentIds,
             ulong? runSeed = null, int sequenceVersion = 0, int levelNumber = 1, IReadOnlyList<ulong> levelSeeds = null,
             IReadOnlyList<string> levelFingerprints = null, IReadOnlyList<IReadOnlyList<RunRoomId>> completedRoutes = null,
-            RunLifeSnapshot life = null, int sourceSchemaVersion = SchemaVersion, RunWorldSnapshot world = null)
+            RunLifeSnapshot life = null, int sourceSchemaVersion = SchemaVersion, RunWorldSnapshot world = null,
+            RunDifficulty difficulty = RunDifficulty.Legacy, IReadOnlyList<RunRoomId> partnerRoomVisits = null)
         {
             if (sequenceVersion != 0 && sequenceVersion != 1 && sequenceVersion != RunSequence.CurrentVersion) throw new NotSupportedException("Saved level policy is not supported.");
             var levelCount = sequenceVersion == 0 ? 1 : RunSequence.LevelCount;
@@ -78,6 +81,10 @@ namespace SpaceCrawler.Core
             Seed = seed; GenerationVersion = generationVersion; Fingerprint = fingerprint; Mode = mode;
             CurrentRoom = currentRoom; RoomVisits = Array.AsReadOnly(visits); EquipmentIds = Array.AsReadOnly(equipment);
             World = world;
+            DifficultyRules.Factor(difficulty); Difficulty = difficulty;
+            partnerRoomVisits = partnerRoomVisits ?? roomVisits;
+            if (partnerRoomVisits.Count < 1 || partnerRoomVisits.Count > 4096) throw new ArgumentException("Invalid saved partner route.");
+            PartnerRoomVisits = Array.AsReadOnly(new List<RunRoomId>(partnerRoomVisits).ToArray());
             if (world != null && world.Players.Count != (int)mode) throw new ArgumentException("Saved pose slots do not match the session.");
             Life = life ?? RunLifeSnapshot.Fresh((int)mode); SourceSchemaVersion = sourceSchemaVersion;
             if (Life.Players.Count != (int)mode || new RunLife(Life).Ended)
@@ -90,7 +97,8 @@ namespace SpaceCrawler.Core
             foreach (var c in value) if (!(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f')) throw new ArgumentException("Invalid level fingerprint.");
         }
 
-        public static RunCheckpoint Capture(RunSequence sequence, RunProgression progression, SavedSessionMode mode, IReadOnlyList<string> equipment, RunLifeSnapshot life = null, RunWorldSnapshot world = null)
+        public static RunCheckpoint Capture(RunSequence sequence, RunProgression progression, SavedSessionMode mode, IReadOnlyList<string> equipment, RunLifeSnapshot life = null, RunWorldSnapshot world = null,
+            RunDifficulty difficulty = RunDifficulty.Legacy, IReadOnlyList<RunRoomId> partnerRoomVisits = null)
         {
             if (sequence == null || !ReferenceEquals(sequence.CurrentGraph, progression.Graph)
                 || (progression.State != RoomFlowState.Playing && progression.State != RoomFlowState.Terminal))
@@ -99,7 +107,7 @@ namespace SpaceCrawler.Core
             for (var i = 0; i < seeds.Length; i++) { seeds[i] = sequence.Levels[i].Seed; fingerprints[i] = GraphFingerprint.Compute(sequence.Levels[i]); }
             return new RunCheckpoint(progression.Graph.Seed, progression.Graph.GenerationVersion, GraphFingerprint.Compute(progression.Graph),
                 mode, progression.CurrentRoomId, progression.VisitedRooms, equipment, sequence.Seed, sequence.Version,
-                sequence.LevelNumber, seeds, fingerprints, sequence.CompletedRoutes, life, SchemaVersion, world);
+                sequence.LevelNumber, seeds, fingerprints, sequence.CompletedRoutes, life, SchemaVersion, world, difficulty, partnerRoomVisits);
         }
     }
 }

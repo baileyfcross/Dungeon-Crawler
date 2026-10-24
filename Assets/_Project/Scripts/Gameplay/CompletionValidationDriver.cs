@@ -70,6 +70,8 @@ namespace SpaceCrawler.Gameplay
             int transitions=0;
             while(Level<3 || !Graph.GetRoom(Room).IsTerminal)
             {
+                if(cooperative && Graph.GetRoom(Room).IsTerminal && Level<3)
+                {var waitingLevel=Level;yield return Until(()=>Level>waitingLevel,"both players reach the level exit");continue;}
                 Check(++transitions<=80,"bounded three-level traversal");
                 if(host)foreach(var actor in Physical.Encounter.Enemies.Where(a=>a.Lifecycle==EnemyLifecycle.Alive))
                     actor.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1),100000+transitions,actor.Target.Identity,actor.Target.InitialHealth),out _);

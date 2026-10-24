@@ -65,8 +65,8 @@ namespace SpaceCrawler.Tests.EditMode
             var run = new RunSequence(42,Catalog(),1); var progress = new RunProgression(run.CurrentGraph,new PlayerIdentity(1));
             progress.TryCompleteEntry(run.CurrentGraph.StartRoomId);
             var current = RunCheckpointCodec.Encode(RunCheckpoint.Capture(run,progress,SavedSessionMode.Solo,new[] {"weapon.knife"}));
-            // Schema 4 adds one world-presence byte to the unchanged schema 3 payload.
-            int size = BitConverter.ToInt32(current,8)-1; var payload = new byte[size]; Array.Copy(current,12,payload,0,size);
+            // Strip the absent-world byte and the schema 5 difficulty/one-room partner route extension.
+            int size = BitConverter.ToInt32(current,8)-13; var payload = new byte[size]; Array.Copy(current,12,payload,0,size);
             byte[] legacy;
             using (var stream = new System.IO.MemoryStream())
             using (var writer = new System.IO.BinaryWriter(stream))

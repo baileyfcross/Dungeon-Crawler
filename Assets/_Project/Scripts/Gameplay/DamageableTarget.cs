@@ -18,6 +18,11 @@ namespace SpaceCrawler.Gameplay
         public Collider2D[] HitColliders => hitColliders;
         public int DisplayedHealth { get; private set; }
         public int InitialHealth => initialHealth;
+        internal void ConfigureEnemyHealth(int maximum)
+        {
+            if (Health != null || enemy != null || maximum < 1) throw new InvalidOperationException("Configure enemy health before binding.");
+            initialHealth = maximum;
+        }
 
         public void ValidateEnemyAuthoring()
         {

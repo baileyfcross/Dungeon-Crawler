@@ -20,7 +20,7 @@
             <ui:Label name="health-status" text="" picking-mode="Ignore" style="white-space: normal;" />
             <ui:Label name="completion-hint" text="" class="description accent" picking-mode="Ignore" />
             <ui:VisualElement class="hud-spacer" picking-mode="Ignore" />
-            <ui:Label text="MOVE  WASD / ARROWS / LEFT STICK     AIM  POINTER / RIGHT STICK     PAUSE  ESC / START" class="controls" picking-mode="Ignore" />
+            <ui:Label text="MOVE  WASD / ARROWS / LEFT STICK     SPRINT  HOLD LEFT SHIFT     AIM  POINTER / RIGHT STICK     PAUSE  ESC / START" class="controls" picking-mode="Ignore" />
         </ui:VisualElement>
         <ui:VisualElement name="steam-session-controls" style="position: absolute; left: 32px; bottom: 96px; width: 400px;">
             <ui:Label name="steam-status" class="description" style="font-size: 12px; white-space: normal;" />

@@ -18,7 +18,7 @@
             </ui:VisualElement>
             <ui:Label name="status" class="status" />
         </ui:VisualElement>
-        <ui:Label text="Walk onto a doorway to travel. In co-op, both players must use the same doorway." class="footer" />
+        <ui:Label text="Walk onto a doorway to travel. Explore rooms independently in co-op; meet at the level exit to advance." class="footer" />
         <ui:VisualElement name="steam-controls" style="position: absolute; right: 52px; top: 210px; width: 340px;">
             <ui:Label text="STEAM CO-OP" class="eyebrow accent" />
             <ui:Label name="steam-account" class="footer" style="margin-top: 8px;" />

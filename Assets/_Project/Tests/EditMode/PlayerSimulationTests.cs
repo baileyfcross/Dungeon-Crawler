@@ -26,6 +26,23 @@ namespace SpaceCrawler.Tests.EditMode
         }
 
         [Test]
+        public void SprintIsBoundedByAuthorityAndNeutralAfterLifecycleGates()
+        {
+            var simulation=Create();
+            simulation.RequestMove(new MoveIntent(player,new Vector2(100,100),true));
+            Assert.That(simulation.DesiredVelocity.Length(),Is.EqualTo(7.5f).Within(.001f));
+            Assert.That(simulation.RequestMove(new MoveIntent(new PlayerIdentity(2),Vector2.One,true)),Is.False);
+            simulation.SetActive(false);simulation.SetActive(true);
+            Assert.That(simulation.DesiredVelocity,Is.EqualTo(Vector2.Zero));
+            simulation.RequestMove(new MoveIntent(player,Vector2.UnitX));
+            Assert.That(simulation.DesiredVelocity.Length(),Is.EqualTo(5));
+            simulation.SetLifeActive(false);
+            Assert.That(simulation.RequestMove(new MoveIntent(player,Vector2.UnitY,true)),Is.False);
+            Assert.That(simulation.DesiredVelocity,Is.EqualTo(Vector2.Zero));
+            Assert.Throws<ArgumentOutOfRangeException>(()=>new PlayerSimulation(player,5,float.NaN));
+        }
+
+        [Test]
         public void AimIsNormalizedAndIndependentOfMovement()
         {
             var simulation = Create();

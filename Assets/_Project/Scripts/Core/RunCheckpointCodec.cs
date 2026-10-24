@@ -49,6 +49,9 @@ namespace SpaceCrawler.Core
                             { writer.Write(enemy.Spawn); writer.Write(enemy.Health); writer.Write(enemy.Maximum); WriteVector(writer,enemy.Position); WriteVector(writer,enemy.Facing); }
                         }
                     }
+                    writer.Write((int)checkpoint.Difficulty);
+                    writer.Write(checkpoint.PartnerRoomVisits.Count);
+                    foreach (var room in checkpoint.PartnerRoomVisits) writer.Write(room.Value);
                 }
                 payload = stream.ToArray();
             }
@@ -72,7 +75,7 @@ namespace SpaceCrawler.Core
             {
                 if (reader.ReadInt32() != Magic) throw new InvalidDataException("Saved run format is not recognized.");
                 var schema = reader.ReadInt32();
-                if (schema != 2 && schema != 3 && schema != RunCheckpoint.SchemaVersion) throw new NotSupportedException("Saved run version is not supported.");
+                if (schema < 2 || schema > RunCheckpoint.SchemaVersion) throw new NotSupportedException("Saved run version is not supported.");
                 var length = reader.ReadInt32();
                 if (length < 0 || length != bytes.Length - 44) throw new InvalidDataException("Saved run is incomplete.");
                 var payload = reader.ReadBytes(length);
@@ -159,9 +162,19 @@ namespace SpaceCrawler.Core
                     }
                     world = new RunWorldSnapshot(poses,rooms);
                 }
+                var difficulty = RunDifficulty.Legacy;
+                RunRoomId[] partnerVisits = null;
+                if (schema >= 5)
+                {
+                    difficulty = (RunDifficulty)reader.ReadInt32();
+                    int partnerCount = reader.ReadInt32();
+                    if (partnerCount < 1 || partnerCount > 4096) throw new InvalidDataException("Invalid partner route length.");
+                    partnerVisits = new RunRoomId[partnerCount];
+                    for (int i = 0; i < partnerCount; i++) partnerVisits[i] = new RunRoomId(reader.ReadInt32());
+                }
                 if (stream.Position != stream.Length) throw new InvalidDataException("Saved run contains unexpected data.");
                 return new RunCheckpoint(seed, generation, fingerprint, mode, current, visits, equipment,
-                    runSeed, sequenceVersion, level, seeds, fingerprints, routes, life, schema, world);
+                    runSeed, sequenceVersion, level, seeds, fingerprints, routes, life, schema, world, difficulty, partnerVisits);
             }
         }
     }

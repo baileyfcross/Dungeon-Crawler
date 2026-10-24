@@ -63,7 +63,7 @@ namespace SpaceCrawler.Gameplay
                 if (!player.CanAct) { Neutral(i); return false; }
                 if (input[i])
                 {
-                    if (!player.RequestMove(new MoveIntent(identity, new CoreVector(command.Move.x, command.Move.y))))
+                    if (!player.RequestMove(new MoveIntent(identity, new CoreVector(command.Move.x, command.Move.y), command.Sprint)))
                     { Neutral(i); return false; }
                     player.RequestAim(new AimIntent(identity, new CoreVector(command.Aim.x, command.Aim.y)));
                 }

@@ -27,10 +27,10 @@ namespace SpaceCrawler.Gameplay
         public bool Restored { get; private set; }
         internal bool IsRestoring { get; private set; }
 
-        public void ConfigureMelee(MeleeEnemyDefinition definition)
+        public void ConfigureMelee(MeleeEnemyDefinition definition, RunDifficulty difficulty = RunDifficulty.Legacy)
         {
             if (!bound || Configuration != null) throw new InvalidOperationException("Bind an enemy only once before configuring its behaviour.");
-            Configuration = definition.CreateConfiguration();
+            Configuration = definition.CreateConfiguration(difficulty);
             if (Simulation != null) Behaviour = new MeleeEnemyBehaviour(Simulation, Configuration,
                 new System.Numerics.Vector2(transform.position.x, transform.position.y));
         }

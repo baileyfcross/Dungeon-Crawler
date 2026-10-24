@@ -20,13 +20,13 @@ namespace SpaceCrawler.Gameplay
         { this.identity = identity; this.prefab = prefab; this.anchor = anchor; this.behaviour = behaviour; }
     }
 
-    /// <summary>Bounded authored spawn slots. Death does not gate exits or persist encounter state.</summary>
+    /// <summary>Bounded authored spawn slots; orchestration restores their saved state.</summary>
     public sealed class RoomEncounter
     {
         private readonly List<EnemyActor> enemies = new List<EnemyActor>();
         private readonly IReadOnlyList<EnemyActor> view;
         public IReadOnlyList<EnemyActor> Enemies => view;
-        public RoomEncounter(Transform root, IReadOnlyList<EnemySpawn> spawns, bool authoritative, uint incarnation)
+        public RoomEncounter(Transform root, IReadOnlyList<EnemySpawn> spawns, bool authoritative, uint incarnation, RunDifficulty difficulty = RunDifficulty.Legacy)
         {
             if (root == null || spawns == null || spawns.Count > 32 || incarnation == 0)
                 throw new ArgumentException("Invalid encounter authoring.");
@@ -49,10 +49,11 @@ namespace SpaceCrawler.Gameplay
                 foreach (var spawn in spawns)
                 {
                     var target = UnityEngine.Object.Instantiate(spawn.Prefab, spawn.Anchor.position, spawn.Anchor.rotation, root);
+                    target.ConfigureEnemyHealth(DifficultyRules.Scale(target.InitialHealth,difficulty));
                     var actor = target.gameObject.AddComponent<EnemyActor>();
                     enemies.Add(actor);
                     actor.Bind(target, new EnemyIdentity(incarnation, spawn.Identity), authoritative);
-                    if (spawn.Behaviour != null) actor.ConfigureMelee(spawn.Behaviour);
+                    if (spawn.Behaviour != null) actor.ConfigureMelee(spawn.Behaviour,difficulty);
                 }
             }
             catch { Retire(); foreach (var actor in enemies) if (actor != null) UnityEngine.Object.Destroy(actor.gameObject); throw; }

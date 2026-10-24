@@ -35,7 +35,7 @@ namespace SpaceCrawler.Gameplay
         {
             authoritative = hostAuthority; weapon = configuration;
             replica = new PlayerState(identity, CoreVector.Zero, CoreVector.Zero, CoreVector.UnitX);
-            bodySprite.color = local ? new Color(0.3f, 0.86f, 0.83f) : new Color(0.87f, 0.56f, 0.95f);
+            bodySprite.color = ExploredMinimap.PlayerColor(identity.Value);
             aliveColor = bodySprite.color;
             if (authoritative)
             {

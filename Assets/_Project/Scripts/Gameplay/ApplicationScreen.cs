@@ -39,9 +39,26 @@ namespace SpaceCrawler.Gameplay
         private int heardLevel;
         private RunRoomId heardRoom;
         private bool heardRoomSet;
+        private ExploredMinimap minimap;
+        private DropdownField difficultyChoice;
+        private ApplicationRoot application;
+        public void BindDifficulty(ApplicationRoot root)
+        {
+            if(newGame==null)return;
+            application=root;
+            difficultyChoice=new DropdownField("Difficulty",new System.Collections.Generic.List<string>{"Easy","Normal","Hard"},(int)root.SelectedDifficulty-1);
+            difficultyChoice.name="run-difficulty";difficultyChoice.tooltip="Enemy health, damage and encounter size. Continue restores the saved difficulty.";
+            difficultyChoice.RegisterValueChangedCallback(evt=>
+            {
+                if(!root.SelectDifficulty((RunDifficulty)(difficultyChoice.index+1)))difficultyChoice.SetValueWithoutNotify(root.SelectedDifficulty.ToString());
+            });
+            difficultyChoice.style.marginBottom=12;
+            newGame.parent.Insert(newGame.parent.IndexOf(newGame),difficultyChoice);
+        }
         public void BindRewards(Func<Guid,RunRewardSummary> source) => reward = source;
         private void Update()
         {
+            if(difficultyChoice!=null)difficultyChoice.SetEnabled(flow.State==ApplicationState.MainMenu && !application.SteamBusy && !application.SteamSessionActive);
             if (healthBar != null) healthBar.EnableInClassList("health-damaged",Time.unscaledTime < damageUntil);
             if (runXp != null) runXp.text = $"Run XP  {session?.Life.RunXp ?? multiplayer?.RunXp ?? 0}";
             var hint = View.Q<Label>("completion-hint");
@@ -112,6 +129,7 @@ namespace SpaceCrawler.Gameplay
             session.Input.SetPauseInterceptor(()=>audioOptions.ConsumePause());
             ShowRun();
             ShowHealth();
+            ShowMinimap();
         }
 
         private void ShowRun()
@@ -120,10 +138,11 @@ namespace SpaceCrawler.Gameplay
             if (label == null || session == null) return;
             var progression = session.Rooms.Progression;
             PresentRoomSound(session.LevelNumber,progression.CurrentRoomId);
-            label.text = $"Level {session.LevelNumber} / {RunSequence.LevelCount}  ·  Rooms entered {progression.RoomsEntered}\n" +
+            label.text = $"Level {session.LevelNumber} / {RunSequence.LevelCount}  ·  {DifficultyRules.DisplayName(session.Difficulty)}  ·  Rooms entered {progression.RoomsEntered}\n" +
                 (progression.IsTerminal ? "Level exit room. Connected rooms remain available." : "Walk onto a doorway to travel. You can return to rooms you have visited.");
             if (session.Persistence?.RecoveryMessage != null) label.text += "\n" + session.Persistence.RecoveryMessage;
             if (progression.Failure != null) label.text += "\nThe room could not be loaded. Return to the menu and try Continue.";
+            ShowMinimap();
         }
 
         public void BindLocalSessionControls(Action<SessionRole> start)
@@ -154,6 +173,14 @@ namespace SpaceCrawler.Gameplay
             if (label != null) label.text = SessionDiagnostics.Option("--show-diagnostics")=="true" ? multiplayer.Describe() : multiplayer.PlayerSummary();
             ShowWeapon(multiplayer.WeaponDisplayName);
             ShowHealth();
+            ShowMinimap();
+        }
+        private void ShowMinimap()
+        {
+            if(minimap==null)return;
+            if(session?.Rooms.Progression!=null)
+                minimap.Present(new ExploredMap(session.Run,session.Rooms.Progression.VisitedRooms,new[]{session.Rooms.Progression.CurrentRoomId}),session.LevelNumber,1);
+            else minimap.Present(multiplayer?.Map, multiplayer?.LevelNumber ?? 1,multiplayer?.LocalPlayer ?? 1);
         }
         private void PresentRoomSound(int level,RunRoomId room)
         {
@@ -215,6 +242,7 @@ namespace SpaceCrawler.Gameplay
             resume = View.Q<Button>("resume");
             pauseReturn = View.Q<Button>("pause-return-to-menu");
             hud = View.Q("gameplay-hud");
+            if(hud!=null){minimap=new ExploredMinimap();hud.Add(minimap);minimap.Present(null,1,1);}
             pauseOverlay = View.Q("pause-overlay");
             deathOverlay = View.Q("death-overlay"); deathReturn = View.Q<Button>("death-return-to-menu");
             completionOverlay = View.Q("completion-overlay"); completionReturn = View.Q<Button>("completion-return-to-menu");

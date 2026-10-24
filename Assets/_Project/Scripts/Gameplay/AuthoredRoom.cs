@@ -18,6 +18,17 @@ namespace SpaceCrawler.Gameplay
         public IReadOnlyList<RoomExitTrigger> CardinalExits => cardinalExits;
         [SerializeField] private DamageableTarget[] targets;
         [SerializeField] private EnemySpawn[] enemySpawns = Array.Empty<EnemySpawn>();
+        [SerializeField] private EnemySpawn[] difficultySpawns = Array.Empty<EnemySpawn>();
+        [SerializeField, Min(1)] private int baseEnemyCount = 3;
+        public IReadOnlyList<EnemySpawn> SelectEncounter(RunDifficulty difficulty, bool startingRoom, bool terminal, ulong seed)
+        {
+            if (startingRoom || terminal) return Array.Empty<EnemySpawn>();
+            if (difficulty == RunDifficulty.Legacy) return enemySpawns;
+            var slots = new List<EnemySpawn>(difficultySpawns);
+            var random = new DeterministicRandom(seed);
+            for (int i=slots.Count-1;i>0;i--) { int j=random.NextInt(i+1); var old=slots[i];slots[i]=slots[j];slots[j]=old; }
+            return slots.GetRange(0,DifficultyRules.EnemyCount(baseEnemyCount,slots.Count,difficulty,false));
+        }
         [SerializeField] private Transform runExitAnchor;
         public Transform RunExitAnchor => runExitAnchor;
         public void ShowRunExit(bool available)
@@ -34,6 +45,20 @@ namespace SpaceCrawler.Gameplay
         public Transform PlayerOneSpawnAnchor => playerOneSpawnAnchor;
         public Transform PlayerTwoSpawnAnchor => playerTwoSpawnAnchor;
         public Transform ContentRoot => contentRoot;
+        public bool IsClearOfArrivals(Vector2 position)
+        {
+            foreach(var anchor in new[]{playerSpawnAnchor,playerOneSpawnAnchor,playerTwoSpawnAnchor})
+                if(anchor!=null && Vector2.Distance(position,anchor.position)<3)return false;
+            for(int port=0;port<cardinalExits.Length;port++)
+            {
+                Vector2 inward=port==0?Vector2.down:port==1?Vector2.left:port==2?Vector2.up:Vector2.right;
+                Vector2 tangent=new Vector2(-inward.y,inward.x);
+                Vector2 door=cardinalExits[port].transform.position;
+                if(Vector2.Distance(position,door)<3)return false;
+                for(int slot=0;slot<2;slot++)if(Vector2.Distance(position,door+inward*2+tangent*(slot==0?-.8f:.8f))<3)return false;
+            }
+            return true;
+        }
         public RoomExitTrigger SingleExit => singleExit;
         public RoomExitTrigger LeftExit => leftExit;
         public RoomExitTrigger RightExit => rightExit;
@@ -106,12 +131,29 @@ namespace SpaceCrawler.Gameplay
                     || !safeBounds.Contains(transform.InverseTransformPoint(enemySpawn.Anchor.position)))
                     throw new InvalidOperationException("Enemy spawn must be inside the room content bounds.");
             }
+            if(difficultySpawns==null || difficultySpawns.Length>32 || baseEnemyCount<1 || baseEnemyCount>32)
+                throw new InvalidOperationException("Invalid difficulty encounter bounds.");
+            spawnIds.Clear();var occupied=new List<Vector2>();
+            foreach(var slot in difficultySpawns)
+            {
+                if(slot==null || slot.Identity<1 || slot.Identity>32 || !spawnIds.Add(slot.Identity) || slot.Prefab==null || slot.Behaviour==null)
+                    throw new InvalidOperationException("Difficulty encounters require unique functional enemy slots.");
+                RequireChild(slot.Anchor);slot.Prefab.ValidateEnemyAuthoring();slot.Behaviour.CreateConfiguration();
+                var p=(Vector2)slot.Anchor.position;
+                if(!slot.Anchor.IsChildOf(contentRoot) || !safeBounds.Contains(transform.InverseTransformPoint(p))
+                    || (gameObject.scene.IsValid() && !IsSafePosition(p)) || !IsClearOfArrivals(p))
+                    throw new InvalidOperationException("Enemy spawn overlaps geometry or the arrival area.");
+                foreach(var exit in cardinalExits)if(Vector2.Distance(p,exit.transform.position)<3)
+                    throw new InvalidOperationException("Enemy spawn obstructs an arrival doorway.");
+                foreach(var other in occupied)if(Vector2.Distance(p,other)<1.2f)throw new InvalidOperationException("Enemy spawns overlap.");
+                occupied.Add(p);
+            }
         }
 
-        public void InitializeEncounter(bool authoritative, uint incarnation, IReadOnlyList<EnemySpawn> spawns = null)
+        public void InitializeEncounter(bool authoritative, uint incarnation, IReadOnlyList<EnemySpawn> spawns = null, RunDifficulty difficulty = RunDifficulty.Legacy)
         {
             if (Encounter != null) throw new InvalidOperationException("Room encounter is already initialized.");
-            Encounter = new RoomEncounter(contentRoot, spawns ?? enemySpawns, authoritative, incarnation);
+            Encounter = new RoomEncounter(contentRoot, spawns ?? enemySpawns, authoritative, incarnation,difficulty);
             var combined = new List<DamageableTarget>(targets);
             foreach (var enemy in Encounter.Enemies) combined.Add(enemy.Target);
             combatTargets = combined.AsReadOnly();

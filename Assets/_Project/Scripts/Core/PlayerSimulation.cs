@@ -8,17 +8,21 @@ namespace SpaceCrawler.Core
     {
         public PlayerState State { get; private set; }
         public float MovementSpeed { get; }
+        public float SprintMultiplier { get; }
         private bool active;
         public bool CanAct { get; private set; } = true;
         public bool IsActive => active && CanAct;
         public Vector2 DesiredVelocity { get; private set; }
 
-        public PlayerSimulation(PlayerIdentity player, float movementSpeed)
+        public PlayerSimulation(PlayerIdentity player, float movementSpeed, float sprintMultiplier = 1.5f)
         {
             if (player.Value <= 0) throw new ArgumentException("An explicit player identity is required.", nameof(player));
             if (float.IsNaN(movementSpeed) || float.IsInfinity(movementSpeed) || movementSpeed <= 0)
                 throw new ArgumentOutOfRangeException(nameof(movementSpeed));
             MovementSpeed = movementSpeed;
+            if (float.IsNaN(sprintMultiplier) || float.IsInfinity(sprintMultiplier) || sprintMultiplier < 1 || sprintMultiplier > 4)
+                throw new ArgumentOutOfRangeException(nameof(sprintMultiplier));
+            SprintMultiplier = sprintMultiplier;
             State = new PlayerState(player, Vector2.Zero, Vector2.Zero, Vector2.UnitX);
         }
 
@@ -42,7 +46,7 @@ namespace SpaceCrawler.Core
             if (!IsActive || !State.Player.Equals(intent.Player) || !IsFinite(intent.Direction)) return false;
             var direction = intent.Direction;
             if (direction.LengthSquared() > 1) direction = Vector2.Normalize(direction);
-            DesiredVelocity = direction * MovementSpeed;
+            DesiredVelocity = direction * MovementSpeed * (intent.Sprint ? SprintMultiplier : 1);
             return true;
         }
 

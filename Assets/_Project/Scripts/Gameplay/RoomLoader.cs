@@ -19,6 +19,17 @@ namespace SpaceCrawler.Gameplay
         public AuthoredRoom CurrentPrefab { get; private set; }
         public RunProgression Progression { get; private set; }
         public event Action RoomChanged;
+        internal RoomLoader CreateSibling(Vector3 offset)
+        {
+            var owner = new GameObject("LoadedRoom"); owner.transform.SetParent(transform,false); owner.transform.localPosition=offset;
+            var loader=owner.AddComponent<RoomLoader>();
+            loader.roomContainer=new GameObject("RoomContents").transform;loader.roomContainer.SetParent(owner.transform,false);
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            loader.combatFixturePrefab=combatFixturePrefab;loader.UseCombatFixture=UseCombatFixture;
+#endif
+            return loader;
+        }
+        internal void ClearLoadedRoom() { RemoveCurrentRoom();prefabs.Clear(); }
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         [SerializeField] private CombatTargetFixture combatFixturePrefab;
         public bool UseCombatFixture { get; set; }
@@ -81,6 +92,7 @@ namespace SpaceCrawler.Gameplay
             RemoveCurrentRoom();
             CurrentPrefab = prefabs[graph.GetRoom(destination).DefinitionId];
             CurrentRoom = Instantiate(CurrentPrefab, roomContainer);
+            Physics2D.SyncTransforms();
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             var validation = SessionDiagnostics.Option("--session-validation");
             if (UseCombatFixture || validation == "run" || validation == "checkpoint" || validation == "resume" || validation == "enemies")
@@ -117,7 +129,8 @@ namespace SpaceCrawler.Gameplay
                 session.Combat.ClearRoom();
                 var node = session.Run.GetRoom(destination);
                 ReplaceRoom(session.Run, destination);
-                CurrentRoom.InitializeEncounter(true, checked(++encounterIncarnation), node.IsTerminal ? Array.Empty<EnemySpawn>() : null);
+                CurrentRoom.InitializeEncounter(true, checked(++encounterIncarnation),
+                    CurrentRoom.SelectEncounter(session.Difficulty,destination.Equals(session.Run.StartRoomId),node.IsTerminal,session.Run.Seed ^ (ulong)destination.Value),session.Difficulty);
                 var sourceRoom = CurrentRoom;
                 CurrentRoom.ConfigureExits(Progression.ConnectionsFrom(destination), Progression.Player, session.Motor.Body,
                     intent => ReferenceEquals(CurrentRoom, sourceRoom) && RequestExit(intent));
