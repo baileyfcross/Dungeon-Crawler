@@ -54,7 +54,7 @@ namespace SpaceCrawler.Tests.EditMode
             var factors=new[]{2f,3f,1f,2f,3f,1f,2f,3f};var policy=new RunRewardPolicy(20,factors);factors[0]=99;
             var restored=RunCheckpointCodec.Decode(RunCheckpointCodec.Encode(Save(policy)));
             Assert.That(restored.Rewards,Is.EqualTo(policy));Assert.That(restored.Rewards.KillXp(1,EnemyArchetype.Melee,RunDifficulty.Normal),Is.EqualTo(80));
-            byte[] current=RunCheckpointCodec.Encode(Save(null));int length=BitConverter.ToInt32(current,8)-4;byte[] payload=new byte[length];Array.Copy(current,12,payload,0,length);
+            byte[] current=RunCheckpointCodec.Encode(Save(null));int length=BitConverter.ToInt32(current,8)-8;byte[] payload=new byte[length];Array.Copy(current,12,payload,0,length);
             byte[] old;using(var stream=new MemoryStream())using(var writer=new BinaryWriter(stream))using(var sha=System.Security.Cryptography.SHA256.Create())
             {writer.Write(0x53435253);writer.Write(6);writer.Write(length);writer.Write(payload);writer.Write(sha.ComputeHash(payload));old=stream.ToArray();}
             var legacy=RunCheckpointCodec.Decode(old);Assert.That(legacy.Rewards,Is.Null);Assert.That(legacy.SourceSchemaVersion,Is.EqualTo(6));

@@ -26,6 +26,9 @@ namespace SpaceCrawler.Gameplay
         public void SetPauseInterceptor(Func<bool> interceptor)=>pauseInterceptor=interceptor;
         private bool attackNeedsRelease;
         private bool roomAvailable = true;
+        private bool modalAvailable = true;
+        public void SetModalAvailable(bool available)
+        { if(modalAvailable==available)return;modalAvailable=available;if(flow!=null)ApplyGate(flow.State); }
         private bool continueRoomMovement, continueRoomSprint;
         public bool GameplayInputEnabled => commands != null && commands.InputActive;
         public bool MovementNeedsNeutral => movementNeedsNeutral;
@@ -54,9 +57,9 @@ namespace SpaceCrawler.Gameplay
 
         private void ApplyGate(ApplicationState state)
         {
-            if (!accountAvailable || !focused || state != ApplicationState.Gameplay || flow.RunEndPending)
+            if (!accountAvailable || !focused || !modalAvailable || state != ApplicationState.Gameplay || flow.RunEndPending)
                 continueRoomMovement = continueRoomSprint = false;
-            var active = accountAvailable && focused && roomAvailable && state == ApplicationState.Gameplay && !flow.RunEndPending;
+            var active = accountAvailable && focused && modalAvailable && roomAvailable && state == ApplicationState.Gameplay && !flow.RunEndPending;
             commands.SetInputActive(active);
             if (active)
             {

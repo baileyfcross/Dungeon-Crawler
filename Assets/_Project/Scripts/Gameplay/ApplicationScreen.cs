@@ -41,6 +41,16 @@ namespace SpaceCrawler.Gameplay
         private bool heardRoomSet;
         private ExploredMinimap minimap;
         private NewRunPanel newRunPanel;
+        private RunUpgradePanel upgradePanel;
+        private bool ConsumeMenuPause()=>upgradePanel?.ConsumePause()==true || audioOptions.ConsumePause();
+        private void BindUpgrades()
+        {
+            upgradePanel=gameObject.AddComponent<RunUpgradePanel>();
+            upgradePanel.Bind(View,flow,()=>session!=null?session.Upgrades:multiplayer?.Upgrades,
+                ()=>session!=null?0:multiplayer.LocalPlayer-1,()=>session!=null || multiplayer?.RoomReady==true,
+                choice=>session!=null?session.SelectUpgrade(choice):multiplayer.SelectUpgrade(choice),
+                ()=>session!=null?session.HealthFailure:multiplayer?.UpgradeNotice);
+        }
         public void BindDifficulty(ApplicationRoot root)
         {
             if(newGame==null)return;
@@ -119,7 +129,7 @@ namespace SpaceCrawler.Gameplay
             session = gameplaySession;
             session.Rooms.RoomChanged += ShowRun;
             session.HealthChanged += ShowHealth;
-            session.Input.SetPauseInterceptor(()=>audioOptions.ConsumePause());
+            BindUpgrades();session.Input.SetPauseInterceptor(ConsumeMenuPause);
             ShowRun();
             ShowHealth();
             ShowMinimap();
@@ -154,7 +164,7 @@ namespace SpaceCrawler.Gameplay
         {
             multiplayer = session;
             multiplayer.Changed += ShowMultiplayer;
-            multiplayer.SetPauseInterceptor(()=>audioOptions.ConsumePause());
+            BindUpgrades();multiplayer.SetPauseInterceptor(ConsumeMenuPause);
             var hint = View.Q<Label>("pause-hint");
             if (hint != null) hint.text = "Local pause only. The other player and host simulation continue.\nRelease movement before resuming.";
             ShowMultiplayer();

@@ -124,10 +124,71 @@ namespace SpaceCrawler.Gameplay
             }
             finally{session.PollLocalDevices=false;UnityEngine.InputSystem.InputSystem.RemoveDevice(keyboard);}
         }
+        private IEnumerator RunUpgradesProof()
+        {
+            string mode=SessionDiagnostics.Option("--session-validation");
+            if(mode!="upgrades-resume")
+            {
+                if(Host)session.DamagePlayer(new PlayerIdentity(1),Guid.NewGuid(),65);
+                for(int slot=0;slot<2;slot++)
+                {
+                    while(!session.PlayerRoom(slot).Equals(session.Run.TerminalRoomId))
+                    {
+                        uint before=session.Epoch;
+                        if(Host)
+                        {
+                            var source=session.PlayerRoom(slot);var edge=session.Run.Route(source,session.Run.TerminalRoomId)[0];
+                            var choices=session.Run.Connections.Where(e=>e.From.Equals(source)).ToArray();
+                            var door=session.PlayerRoomLoader(slot).CurrentRoom.ExitFor(edge,choices);
+                            if(slot==0 && session.Run.GetRoom(edge.To).IsTerminal)
+                            {
+                                Check(door.IsLevelExit,"terminal doorway identified");
+                                string evidence=SessionDiagnostics.Option("--ranged-evidence");
+                                if(evidence!=null)
+                                {
+                                    var position=door.transform.position;var center=session.PlayerRoomLoader(slot).CurrentRoom.transform.position;
+                                    session.Players[slot].Motor.PlaceAt(position+(center-position).normalized*2);session.Follower.Follow();
+                                    CaptureRangedFrame(System.IO.Path.Combine(evidence,"LevelDoor.png"));
+                                }
+                            }
+                            session.Players[slot].Motor.PlaceAt(door.transform.position);
+                        }
+                        yield return Until(()=>session.RoomReady && session.Epoch>before,"upgrade route handshake");
+                        yield return new WaitForSeconds(.15f);
+                    }
+                }
+                yield return Until(()=>session.UpgradePending,"shared upgrade stop");
+                Check(session.LevelNumber==1 && !Local.Input.GameplayInputEnabled,"upgrade modal gates gameplay");
+                if(Host)Check(session.SelectUpgrade(1),"host suit choice accepted");
+                yield return Until(()=>session.Upgrades.Choice(0)==1,"host choice replicated");
+                yield return new WaitForSeconds(.5f);
+                Check(session.LevelNumber==1 && session.Upgrades.Choice(1)==0,"party waits for client");
+                if(mode=="upgrades-checkpoint")
+                {
+                    if(Host)session.SaveCurrent();Record("UPGRADES-CHECKPOINT-PASS");
+                    if(!Host){yield return new WaitForSeconds(1);Application.Quit(0);}yield break;
+                }
+            }
+            Check(session.Upgrades.Pending && session.Upgrades.Choice(0)==1 && session.Upgrades.Choice(1)==0,"pending personal choice restored");
+            if(!Host)Check(session.SelectUpgrade(3),"client damage choice accepted");
+            yield return Until(()=>session.LevelNumber==2 && session.RoomReady,"party advances after both choices");
+            Check(!session.Upgrades.Pending && session.Upgrades.GrantedLevels==1,"durable grant completed");
+            Check(session.Upgrades.Rank(0,RunUpgrade.ReinforcedSuit)==1 && session.Upgrades.Rank(1,RunUpgrade.WeaponCalibration)==1,"personal choices preserved");
+            yield return new WaitForSeconds(.5f);
+            if(Host)
+            {
+                Check(session.Life[0].Current==55 && session.Life[0].Maximum==120 && session.Life[1].Maximum==100,"suit heals exactly once");
+                var combat=session.Players[1].Combat.Simulation;combat.AdvanceTime(2);
+                Check(combat.TryAttack(new AttackIntent(new PlayerIdentity(2),CoreVector.UnitX),out var attack) && attack.Weapon.Damage==29,"authoritative calibrated attack");
+                session.SaveCurrent();
+            }
+            Record("UPGRADES-PASS");if(!Host){yield return new WaitForSeconds(1);Application.Quit(0);}
+        }
         private IEnumerator Run()
         {
             yield return Until(() => session.RoomReady, "initial room handshake");
             if(SessionDiagnostics.Option("--session-validation")=="room-movement"){yield return RunRoomMovement();yield break;}
+            if(SessionDiagnostics.Option("--session-validation").StartsWith("upgrades")){yield return RunUpgradesProof();yield break;}
             string expectedClass=SessionDiagnostics.Option("--expected-class");
             if(expectedClass!=null)
             {

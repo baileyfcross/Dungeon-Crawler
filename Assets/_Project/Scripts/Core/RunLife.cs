@@ -96,6 +96,20 @@ namespace SpaceCrawler.Core
                 throw new InvalidOperationException("Class selection must be valid and cannot change during a run.");
             classes[slot] = classId;
         }
+        // Accept only the already-durable health part of a run-upgrade transaction, preserving damage identities.
+        public void AcceptUpgradeHealth(RunLifeSnapshot snapshot)
+        {
+            if(Ended || snapshot.RunId!=RunId || snapshot.RunXp!=RunXp || snapshot.Players.Count!=Count)throw new InvalidOperationException("Upgrade health identity mismatch.");
+            for(int i=0;i<Count;i++)
+            {
+                var next=snapshot.Players[i];int delta=next.Maximum-players[i].Maximum;
+                if(snapshot.Profiles[i]!=profiles[i] || snapshot.Classes[i]!=classes[i] || next.State!=PlayerLifeState.Alive
+                    || players[i].State!=PlayerLifeState.Alive || (delta!=0 && delta!=20) || next.Current-players[i].Current!=delta)
+                    throw new InvalidOperationException("Invalid upgrade health transaction.");
+            }
+            for(int i=0;i<Count;i++)players[i]=snapshot.Players[i];
+            Changed?.Invoke();
+        }
         public bool TryDamage(PlayerIdentity target, Guid attackId, int amount)
         {
             var slot = target.Value - 1;

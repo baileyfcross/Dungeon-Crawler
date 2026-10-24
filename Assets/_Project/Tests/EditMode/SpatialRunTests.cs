@@ -66,7 +66,7 @@ namespace SpaceCrawler.Tests.EditMode
             progress.TryCompleteEntry(run.CurrentGraph.StartRoomId);
             var current = RunCheckpointCodec.Encode(RunCheckpoint.Capture(run,progress,SavedSessionMode.Solo,new[] {"weapon.knife"}));
             // Strip the absent-world byte and the difficulty/partner route and encounter-policy extensions.
-            int size = BitConverter.ToInt32(current,8)-21; var payload = new byte[size]; Array.Copy(current,12,payload,0,size);
+            int size = BitConverter.ToInt32(current,8)-25; var payload = new byte[size]; Array.Copy(current,12,payload,0,size);
             byte[] legacy;
             using (var stream = new System.IO.MemoryStream())
             using (var writer = new System.IO.BinaryWriter(stream))

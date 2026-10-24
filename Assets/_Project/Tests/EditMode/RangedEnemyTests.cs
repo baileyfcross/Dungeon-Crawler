@@ -70,9 +70,9 @@ namespace SpaceCrawler.Tests.EditMode
         {
             var world=new RunWorldSnapshot(new[]{new SavedPlayerPose(Vector2.Zero,Vector2.UnitX,0)},new[]{new SavedRoomState(1,new RunRoomId(0),new[]{new SavedEnemy(1,45,150,new Vector2(2,3),Vector2.UnitY)})});
             var save=new RunCheckpoint(42,1,new string('a',64),SavedSessionMode.Solo,new RunRoomId(0),new[]{new RunRoomId(0)},new[]{"weapon.knife"},world:world,difficulty:RunDifficulty.Hard);
-            byte[] current=RunCheckpointCodec.Encode(save);int size=BitConverter.ToInt32(current,8);byte[] payload=new byte[size-12];
+            byte[] current=RunCheckpointCodec.Encode(save);int size=BitConverter.ToInt32(current,8);byte[] payload=new byte[size-16];
             // One enemy: remove its archetype before the 16-byte trailing difficulty/route/policy extension, and the final policy integer.
-            Array.Copy(current,12,payload,0,size-24);Array.Copy(current,12+size-20,payload,size-24,12);
+            Array.Copy(current,12,payload,0,size-28);Array.Copy(current,12+size-24,payload,size-28,12);
             byte[] old;using(var stream=new System.IO.MemoryStream())using(var writer=new System.IO.BinaryWriter(stream))using(var hash=System.Security.Cryptography.SHA256.Create())
             {writer.Write(0x53435253);writer.Write(5);writer.Write(payload.Length);writer.Write(payload);writer.Write(hash.ComputeHash(payload));old=stream.ToArray();}
             var restored=RunCheckpointCodec.Decode(old);Assert.That(restored.EncounterVersion,Is.Zero);
@@ -82,7 +82,7 @@ namespace SpaceCrawler.Tests.EditMode
         [Test] public void SchemaFiveRetainsMeleePolicyAndArchivesOriginal()
         {
             var save=new RunCheckpoint(42,1,new string('a',64),SavedSessionMode.Solo,new RunRoomId(0),new[]{new RunRoomId(0)},new[]{"weapon.knife"},difficulty:RunDifficulty.Hard);
-            byte[] current=RunCheckpointCodec.Encode(save);int length=BitConverter.ToInt32(current,8)-8;byte[] payload=new byte[length];Array.Copy(current,12,payload,0,length);
+            byte[] current=RunCheckpointCodec.Encode(save);int length=BitConverter.ToInt32(current,8)-12;byte[] payload=new byte[length];Array.Copy(current,12,payload,0,length);
             byte[] old;using(var stream=new System.IO.MemoryStream())using(var writer=new System.IO.BinaryWriter(stream))using(var hash=System.Security.Cryptography.SHA256.Create())
             {writer.Write(0x53435253);writer.Write(5);writer.Write(length);writer.Write(payload);writer.Write(hash.ComputeHash(payload));old=stream.ToArray();}
             var restored=RunCheckpointCodec.Decode(old);Assert.That(restored.EncounterVersion,Is.Zero);Assert.That(restored.Difficulty,Is.EqualTo(RunDifficulty.Hard));

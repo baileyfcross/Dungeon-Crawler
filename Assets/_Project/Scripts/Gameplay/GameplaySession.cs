@@ -7,7 +7,7 @@ using UnityEngine;
 namespace SpaceCrawler.Gameplay
 {
     /// <summary>Wires one local player explicitly and orders presentation after physics.</summary>
-    public sealed class GameplaySession : MonoBehaviour
+    public sealed partial class GameplaySession : MonoBehaviour
     {
         [SerializeField, Min(0.01f)] private float movementSpeed = 5;
         [SerializeField] private PlayerMotor motor;
@@ -57,7 +57,7 @@ namespace SpaceCrawler.Gameplay
 
         public void Bind(PlayerIdentity identity, ApplicationFlow flow, ulong? runSeed = null, bool useLevelSequence = false,
             RunCheckpoint checkpoint = null, Action<RunCheckpoint> save = null, WeaponDefinition restoredWeapon = null,
-            Guid? profileId = null, Action<RunEndReceipt> finish = null, RunDifficulty difficulty = RunDifficulty.Legacy, bool enableKillRewards = false, string classId = "")
+            Guid? profileId = null, Action<RunEndReceipt> finish = null, RunDifficulty difficulty = RunDifficulty.Legacy, bool enableKillRewards = false, string classId = "", bool enableRunUpgrades = false)
         {
             if (Simulation != null) throw new InvalidOperationException("Session is already bound.");
             if (generation == null) throw new InvalidOperationException("Missing run generation definition.");
@@ -70,6 +70,7 @@ namespace SpaceCrawler.Gameplay
             EncounterVersion=checkpoint?.EncounterVersion ?? (Difficulty==RunDifficulty.Legacy?0:EncounterComposition.CurrentVersion);
             RewardPolicy=checkpoint!=null ? checkpoint.Rewards : enableKillRewards ? (rewardDefinition!=null?rewardDefinition.CreatePolicy():RunRewardPolicy.Default()) : null;
             Life = new RunLife(checkpoint?.Life ?? RunLifeSnapshot.Fresh(1));
+            Upgrades=checkpoint!=null?checkpoint.Upgrades:useLevelSequence && enableRunUpgrades?new RunUpgrades(1):null;
             if (checkpoint == null && !string.IsNullOrEmpty(classId)) Life.BindClass(0,classId);
             killRewards=new RunKillRewards(Life,RewardPolicy,Difficulty,checkpoint?.World);
             soundState.Observe(Life[0]);
@@ -90,6 +91,7 @@ namespace SpaceCrawler.Gameplay
             motor.Bind(Simulation);
             follower.Bind(motor.transform);
             combat.Bind(Simulation, startingWeapon != null ? startingWeapon.CreateConfiguration() : null);
+            ApplyUpgradeStats();
             input.Bind(new LocalPlayerCommands(Simulation,combat,Interact),flow);
             if (Debug.isDebugBuild)
                 Debug.Log($"[RunGeneration] seed={Run.Seed} version={Run.GenerationVersion} nodes={Run.Nodes.Count} connections={Run.Connections.Count} start={Run.StartRoomId} terminal={Run.TerminalRoomId}", this);
@@ -111,22 +113,29 @@ namespace SpaceCrawler.Gameplay
 
         public bool TryAdvanceLevel(RunProgression progression)
         {
+            if(Sequence!=null && LevelNumber<3 && progression.IsTerminal && Upgrades!=null)
+            {
+                if(!Upgrades.Pending)Upgrades=Upgrades.Begin(LevelNumber);
+                input.SetModalAvailable(false);motor.Stop();
+                if(!Upgrades.CanAdvance)return false;
+            }
             if (Sequence == null || !Sequence.TryAdvance(progression)) return false;
             Run = Sequence.CurrentGraph;
+            if(Upgrades!=null)Upgrades=Upgrades.EnterLevel(LevelNumber);
             return true;
         }
 
-        public void CommitCheckpoint(RunProgression progression)
+        public void CommitCheckpoint(RunProgression progression, RunLifeSnapshot stagedLife = null, RunUpgrades stagedUpgrades = null)
         {
             if (Life.Ended || rooms?.CurrentRoom == null) return;
             var world = Persistence.Capture(LevelNumber,progression.CurrentRoomId,rooms.CurrentRoom,new[] {motor},new[] {Simulation},new[] {combat});
             if (commitCheckpoint != null && Sequence != null)
-                Persistence.Commit(RunCheckpoint.Capture(Sequence,progression,SavedSessionMode.Solo,new[] {combat.Simulation.EquippedWeapon.Id},Life.Capture(),world,Difficulty,encounterVersion:EncounterVersion,rewards:RewardPolicy),commitCheckpoint);
+                Persistence.Commit(RunCheckpoint.Capture(Sequence,progression,SavedSessionMode.Solo,new[] {combat.Simulation.EquippedWeapon.Id},stagedLife??Life.Capture(),world,Difficulty,encounterVersion:EncounterVersion,rewards:RewardPolicy,upgrades:stagedUpgrades??Upgrades),commitCheckpoint);
         }
 
         public void SaveCurrent()
         { if (Rooms?.Progression != null && (Rooms.Progression.State == RoomFlowState.Playing || Rooms.Progression.State == RoomFlowState.Terminal)) CommitCheckpoint(Rooms.Progression); }
-        public bool DamagePlayer(Guid attackId, int amount) => Life.TryDamage(Simulation.State.Player, attackId, amount);
+        public bool DamagePlayer(Guid attackId, int amount) => !UpgradePending && Life.TryDamage(Simulation.State.Player, attackId, amount);
         private void ApplyLife()
         {
             soundState.Observe(Life[0]);
@@ -158,6 +167,7 @@ namespace SpaceCrawler.Gameplay
         }
         private void Update()
         {
+            TickUpgrades();
             if (Life?.Ended == true && !runFinished) ApplyLife();
             ObserveCompletion();
             if (PollLocalDevices) input.SampleMovement();
@@ -167,7 +177,7 @@ namespace SpaceCrawler.Gameplay
         {
             if(enemies==null)return;
             enemies.RetainOccupiedRooms(new[]{rooms.CurrentRoom});
-            enemies.Advance(rooms.CurrentRoom,flow.State==ApplicationState.Gameplay && !Life.Ended,Time.fixedDeltaTime);
+            enemies.Advance(rooms.CurrentRoom,flow.State==ApplicationState.Gameplay && !Life.Ended && !UpgradePending,Time.fixedDeltaTime);
         }
         internal bool TrySave()
         {

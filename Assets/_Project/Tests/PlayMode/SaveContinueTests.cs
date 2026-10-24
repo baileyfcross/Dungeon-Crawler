@@ -55,6 +55,7 @@ namespace SpaceCrawler.Tests.PlayMode
                 var exit = session.Rooms.CurrentRoom.ExitFor(edge,session.Rooms.Progression.Choices);
                 session.Motor.PlaceAt(exit.transform.position);
                 yield return Until(() => session.LevelNumber != level || !session.Rooms.Progression.CurrentRoomId.Equals(room));
+                if(session.UpgradePending){session.SelectUpgrade(2);yield return Until(()=>session.LevelNumber>level);}
             }
             var saved = root.SavedCheckpoint;
             Assert.That(saved.LevelNumber, Is.EqualTo(2));

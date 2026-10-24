@@ -361,7 +361,7 @@ namespace SpaceCrawler.Gameplay
                             runSeed: Debug.isDebugBuild && ulong.TryParse(SessionDiagnostics.Option("--solo-seed"),out var soloSeed) ? soloSeed : (ulong?)null,
                             useLevelSequence: true, checkpoint: pendingCheckpoint,
                             save: CommitCheckpoint, restoredWeapon: pendingCheckpoint != null ? multiplayerSession.ResolveWeapon(pendingCheckpoint.EquipmentIds[0]) : null,
-                            profileId: Profile.Id, finish: FinishRun, difficulty:StartingDifficulty,enableKillRewards:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-rewards")=="legacy"),classId:StartingClass);
+                            profileId: Profile.Id, finish: FinishRun, difficulty:StartingDifficulty,enableKillRewards:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-rewards")=="legacy"),classId:StartingClass,enableRunUpgrades:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-upgrades")=="legacy"));
                     }
                     else
                     {
@@ -377,7 +377,7 @@ namespace SpaceCrawler.Gameplay
                         ulong? seed = pendingSessionRole == SessionRole.Host && ulong.TryParse(SessionDiagnostics.Option("--session-seed"), out var requestedSeed) ? requestedSeed : (ulong?)null;
                         CurrentMultiplayer.Bind(pendingSessionRole, Flow, address, port, seed, useLevelSequence: true,
                             checkpoint: pendingCheckpoint, save: CommitCheckpoint, profileId: Profile.Id, finish: FinishRun,
-                            pendingRewards: progress.PendingFor, acknowledgeReward: progress.Acknowledge,difficulty:StartingDifficulty,enableKillRewards:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-rewards")=="legacy"),classId:StartingClass);
+                            pendingRewards: progress.PendingFor, acknowledgeReward: progress.Acknowledge,difficulty:StartingDifficulty,enableKillRewards:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-rewards")=="legacy"),classId:StartingClass,enableRunUpgrades:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-upgrades")=="legacy"));
                     }
                 }
                 else { CurrentGameplay = null; pendingSessionRole = SessionRole.None; }

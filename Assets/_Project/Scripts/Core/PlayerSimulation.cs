@@ -9,6 +9,9 @@ namespace SpaceCrawler.Core
         public PlayerState State { get; private set; }
         public float MovementSpeed { get; }
         public float SprintMultiplier { get; }
+        private int movementBonusPercent;
+        public void SetMovementBonusPercent(int percent)
+        { if(percent<0 || percent>16)throw new ArgumentOutOfRangeException(nameof(percent));movementBonusPercent=percent; }
         private bool active;
         public bool CanAct { get; private set; } = true;
         public bool IsActive => active && CanAct;
@@ -46,7 +49,7 @@ namespace SpaceCrawler.Core
             if (!IsActive || !State.Player.Equals(intent.Player) || !IsFinite(intent.Direction)) return false;
             var direction = intent.Direction;
             if (direction.LengthSquared() > 1) direction = Vector2.Normalize(direction);
-            DesiredVelocity = direction * MovementSpeed * (intent.Sprint ? SprintMultiplier : 1);
+            DesiredVelocity = direction * MovementSpeed * (1+movementBonusPercent/100f) * (intent.Sprint ? SprintMultiplier : 1);
             return true;
         }
 

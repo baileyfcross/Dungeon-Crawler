@@ -37,6 +37,13 @@ namespace SpaceCrawler.Gameplay
         }
         [SerializeField] private Transform runExitAnchor;
         public Transform RunExitAnchor => runExitAnchor;
+        public void PresentLevelDoors(DungeonGraph graph,IReadOnlyList<RoomConnection> choices,bool finalLevel=false)
+        {
+            var marker=runExitAnchor!=null?runExitAnchor.GetComponentInChildren<SpriteRenderer>(true):null;
+            Color gold=marker!=null?marker.color:new Color(1,.8f,.2f);
+            foreach(var edge in choices)
+                ExitFor(edge,choices).PresentLevelExit(!graph.GetRoom(edge.From).IsTerminal && graph.GetRoom(edge.To).IsTerminal,gold,playerSpawnAnchor.position,finalLevel);
+        }
         public void ShowRunExit(bool available)
         {
             if (runExitAnchor == null) { if (available) throw new InvalidOperationException("An authored run exit is required."); return; }

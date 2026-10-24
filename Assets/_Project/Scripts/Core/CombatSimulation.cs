@@ -8,6 +8,9 @@ namespace SpaceCrawler.Core
     {
         private readonly PlayerSimulation player;
         public WeaponConfiguration EquippedWeapon { get; }
+        private int damageBonusPercent;
+        public void SetDamageBonusPercent(int percent)
+        { if(percent<0 || percent>30)throw new ArgumentOutOfRangeException(nameof(percent));damageBonusPercent=percent; }
         public float CooldownRemaining { get; private set; }
         public long AcceptedAttackCount { get; private set; }
         public AttackExecution LastExecution { get; private set; }
@@ -46,7 +49,7 @@ namespace SpaceCrawler.Core
             if (Vector2.DistanceSquared(intent.AimDirection, player.State.AimDirection) > 0.000001f)
                 return false;
             CooldownRemaining = EquippedWeapon.Cooldown;
-            execution = new AttackExecution(player.State.Player, ++AcceptedAttackCount, EquippedWeapon,
+            execution = new AttackExecution(player.State.Player, ++AcceptedAttackCount, damageBonusPercent==0?EquippedWeapon:EquippedWeapon.WithDamageBonus(damageBonusPercent),
                 player.State.Position, player.State.AimDirection);
             LastExecution = execution;
             return true;

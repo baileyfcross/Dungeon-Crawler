@@ -79,8 +79,11 @@ namespace SpaceCrawler.Core
                 || GraphFingerprint.Compute(graph) != checkpoint.Fingerprint) throw new ArgumentException("Saved current graph does not match.");
             RunProgression.ValidateRoute(graph, checkpoint.RoomVisits);
             RunProgression.ValidateRoute(graph, checkpoint.PartnerRoomVisits);
-            if (checkpoint.Mode == SavedSessionMode.Solo && sequence.LevelNumber < LevelCount && graph.GetRoom(checkpoint.CurrentRoom).IsTerminal)
+            if (checkpoint.Mode == SavedSessionMode.Solo && sequence.LevelNumber < LevelCount && graph.GetRoom(checkpoint.CurrentRoom).IsTerminal && checkpoint.Upgrades?.Pending!=true)
                 throw new ArgumentException("Saved checkpoint is inside an incomplete level transition.");
+            if(checkpoint.Upgrades?.Pending==true && (!graph.GetRoom(checkpoint.CurrentRoom).IsTerminal
+                || (checkpoint.Mode==SavedSessionMode.Cooperative && !graph.GetRoom(checkpoint.PartnerRoomVisits[checkpoint.PartnerRoomVisits.Count-1]).IsTerminal)))
+                throw new ArgumentException("Saved upgrade stop requires the party at the level exit.");
             return sequence;
         }
     }

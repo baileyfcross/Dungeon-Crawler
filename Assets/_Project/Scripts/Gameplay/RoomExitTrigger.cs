@@ -15,6 +15,26 @@ namespace SpaceCrawler.Gameplay
         private ExitIntent intent;
         private Action<RoomConnection, Collider2D, bool> presence;
         private RoomConnection connection;
+        private SpriteRenderer[] doorSprites;
+        private Color[] ordinaryColors;
+        private TextMesh levelLabel;
+        public bool IsLevelExit { get; private set; }
+        public void PresentLevelExit(bool levelExit,Color gold,Vector3 interior,bool finalLevel=false)
+        {
+            if(doorSprites==null)
+            {doorSprites=GetComponentsInChildren<SpriteRenderer>(true);ordinaryColors=new Color[doorSprites.Length];for(int i=0;i<doorSprites.Length;i++)ordinaryColors[i]=doorSprites[i].color;}
+            IsLevelExit=levelExit;
+            for(int i=0;i<doorSprites.Length;i++)doorSprites[i].color=levelExit?gold:ordinaryColors[i];
+            if(levelExit && levelLabel==null)
+            {
+                var label=new GameObject("LevelExitLabel");label.transform.SetParent(transform.parent,false);
+                label.transform.position=transform.position+(interior-transform.position).normalized*.8f;
+                levelLabel=label.AddComponent<TextMesh>();levelLabel.text=finalLevel?"Run Exit":"Next Level";levelLabel.font=Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                levelLabel.fontSize=32;levelLabel.characterSize=.06f;levelLabel.anchor=TextAnchor.MiddleCenter;levelLabel.color=gold;
+                var renderer=label.GetComponent<MeshRenderer>();renderer.sharedMaterial=levelLabel.font.material;renderer.sortingOrder=8;
+            }
+            if(levelLabel!=null)levelLabel.gameObject.SetActive(levelExit);
+        }
         public BoxCollider2D Trigger => trigger;
         public RunRoomId Destination => intent.Destination;
         public RunRoomId Source => intent.CurrentRoom;
@@ -32,6 +52,7 @@ namespace SpaceCrawler.Gameplay
 
         public void DisableExit()
         {
+            if(levelLabel!=null)levelLabel.gameObject.SetActive(false);
             blockedArrivals.Clear();
             presence = null;
             request = null;

@@ -60,6 +60,7 @@ namespace SpaceCrawler.Gameplay
                 selected=SessionValidationDriver.CreateEnemySpawns(room,EnemyFixtureCount>0?EnemyFixtureCount:1);
 #endif
             room.InitializeEncounter(authoritative,RoomIncarnation(id),selected,Difficulty);
+            room.PresentLevelDoors(Run,choices,LevelNumber==3);
             cooperativeRooms.Add(id,loader);
             room.ShowRunExit(LevelNumber==RunSequence.LevelCount && node.IsTerminal);
             if(authoritative)
@@ -101,6 +102,7 @@ namespace SpaceCrawler.Gameplay
         }
         private void AdvanceCooperativeTravel()
         {
+            if(UpgradePending && !Upgrades.CanAdvance)return;
             bool changed=false;
             for(int i=0;i<2;i++)
             {
@@ -117,6 +119,11 @@ namespace SpaceCrawler.Gameplay
             }
             bool nextLevel=LevelNumber<RunSequence.LevelCount && Progression.IsTerminal && partnerProgression.IsTerminal
                 && Life[0].State==PlayerLifeState.Alive && Life[1].State==PlayerLifeState.Alive;
+            if(nextLevel && Upgrades!=null && !Upgrades.CanAdvance)
+            {
+                Upgrades=Upgrades.Begin(LevelNumber);nextLevel=false;ApplyUpgradeGate();
+                if(!changed){TrySave();SendUpgradeState();return;}
+            }
             if(!changed && !nextLevel)return;
             epoch++;
             if(nextLevel)
@@ -125,6 +132,7 @@ namespace SpaceCrawler.Gameplay
                 CaptureCooperativeRooms();
                 if(!sequence.TryAdvance(Progression))throw new InvalidOperationException("Cooperative level exit was not ready.");
                 Run=sequence.CurrentGraph;Fingerprint=GraphFingerprint.Compute(Run);
+                if(Upgrades!=null)Upgrades=Upgrades.EnterLevel(LevelNumber);
                 Progression=new RunProgression(Run,new PlayerIdentity(1));partnerProgression=new RunProgression(Run,new PlayerIdentity(2));
                 Progression.SetGameplayActive(true);partnerProgression.SetGameplayActive(true);
                 playerRooms[0]=playerRooms[1]=Run.StartRoomId.Value;
@@ -154,13 +162,13 @@ namespace SpaceCrawler.Gameplay
         }
         private void AdvanceCooperativeEnemies()
         {
-            if(Mode!=SessionRole.Host || !roomReady || stopped || stopRequested || RunEnded || Life.Ended)return;
+            if(Mode!=SessionRole.Host || !roomReady || UpgradePending || stopped || stopRequested || RunEnded || Life.Ended)return;
             enemies.RetainOccupiedRooms(playerRooms.Distinct().Select(id=>cooperativeRooms[id].CurrentRoom));
             foreach(int id in playerRooms.Distinct())enemies.Advance(cooperativeRooms[id].CurrentRoom,true,Time.fixedDeltaTime);
         }
         private void CaptureCooperativeRooms()
         { foreach(var entry in cooperativeRooms)persistence.CaptureRoom(LevelNumber,new RunRoomId(entry.Key),entry.Value.CurrentRoom); }
-        private void SaveCooperativeWorld()
+        private void SaveCooperativeWorld(RunLifeSnapshot stagedLife=null,RunUpgrades stagedUpgrades=null)
         {
             if(Mode!=SessionRole.Host || Life==null || Life.Ended || cooperativeRooms.Count==0
                 || Progression.State==RoomFlowState.EnteringRoom || partnerProgression.State==RoomFlowState.EnteringRoom)return;
@@ -168,7 +176,7 @@ namespace SpaceCrawler.Gameplay
             var world=persistence.CapturePlayers(players.Select(p=>p.Motor).ToArray(),players.Select(p=>p.Simulation).ToArray(),players.Select(p=>p.Combat).ToArray(),
                 playerRooms.Select(id=>cooperativeRooms[id].CurrentRoom).ToArray());
             if(commitCheckpoint!=null)persistence.Commit(RunCheckpoint.Capture(sequence,Progression,SavedSessionMode.Cooperative,
-                new[]{weapon.Id,weapon.Id},Life.Capture(),world,Difficulty,partnerProgression.VisitedRooms,EncounterVersion,RewardPolicy),commitCheckpoint);
+                new[]{weapon.Id,weapon.Id},stagedLife??Life.Capture(),world,Difficulty,partnerProgression.VisitedRooms,EncounterVersion,RewardPolicy,stagedUpgrades??Upgrades),commitCheckpoint);
         }
         private void SendCooperativeState()
         {

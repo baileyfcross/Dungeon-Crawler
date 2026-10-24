@@ -134,6 +134,7 @@ namespace SpaceCrawler.Gameplay
                 var sourceRoom = CurrentRoom;
                 CurrentRoom.ConfigureExits(Progression.ConnectionsFrom(destination), Progression.Player, session.Motor.Body,
                     intent => ReferenceEquals(CurrentRoom, sourceRoom) && RequestExit(intent));
+                CurrentRoom.PresentLevelDoors(session.Run,Progression.ConnectionsFrom(destination),session.LevelNumber==3);
                 session.Combat.RegisterRoomTargets(CurrentRoom.CombatTargets);
                 int rewardLevel=session.LevelNumber;
                 session.Persistence.RestoreRoom(rewardLevel,destination,CurrentRoom,() => session.TrySave(),a=>session.RewardEnemy(rewardLevel,destination,a));
@@ -155,6 +156,7 @@ namespace SpaceCrawler.Gameplay
                 }
                 CurrentRoom.ShowRunExit(session.Sequence != null && session.LevelNumber == RunSequence.LevelCount && Progression.IsTerminal);
                 session.CommitCheckpoint(Progression);
+                session.Input.SetModalAvailable(!session.UpgradePending);
                 session.Input.SetRoomAvailable(true);
                 if (Debug.isDebugBuild)
                     Debug.Log($"[RoomFlow] room={destination} definition={node.DefinitionId} state={Progression.State} choices={Progression.Choices.Count} spawn={session.Motor.Body.position} entered={Progression.RoomsEntered}", this);
@@ -171,6 +173,12 @@ namespace SpaceCrawler.Gameplay
             }
         }
 
+        internal void AdvanceAfterUpgrade()
+        {
+            if(!session.TryAdvanceLevel(Progression))return;
+            arrivalPort=-1;Progression=new RunProgression(session.Run,session.Simulation.State.Player);
+            ApplyApplicationState(flow.State);EnterRoom(session.Run.StartRoomId);
+        }
         private void RemoveCurrentRoom()
         {
             if (CurrentRoom == null) return;

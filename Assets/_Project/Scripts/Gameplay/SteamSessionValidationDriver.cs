@@ -46,6 +46,34 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             string mode=SessionDiagnostics.Option("--steam-session-validation");
+            if(mode=="upgrades")
+            {
+                Submit("new-game");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay,"new upgrade run");
+                var game=root.CurrentGameplay;game.PollLocalDevices=false;game.Input.HandleFocus(true);root.Flow.TryRequest(ApplicationCommand.Resume);
+                game.DamagePlayer(Guid.NewGuid(),65);
+                while(!game.Rooms.Progression.IsTerminal)
+                {
+                    var edge=game.Run.Route(game.Rooms.Progression.CurrentRoomId,game.Run.TerminalRoomId)[0];
+                    Check(game.Rooms.RequestExit(new ExitIntent(new PlayerIdentity(1),edge.From,edge.To)),"authored traversal to upgrade");
+                }
+                yield return Until(()=>root.CurrentScreen.GetComponent<RunUpgradePanel>().IsOpen,"upgrade modal opens");
+                Check(!game.Input.GameplayInputEnabled && !root.CurrentScreen.View.Q<Button>("confirm-upgrade").enabledInHierarchy,"input and confirmation gated");
+                string capture=SessionDiagnostics.Option("--steam-screenshot");
+                if(capture!=null)foreach(var size in new[]{new Vector2Int(1280,720),new Vector2Int(1920,1080),new Vector2Int(1024,768),new Vector2Int(1280,800)})
+                    yield return CapturePanel(root.CurrentScreen,capture+$".{size.x}x{size.y}.png",size.x,size.y);
+                Check(root.CurrentScreen.GetComponent<RunUpgradePanel>().ConsumePause(),"upgrade escape opens pause");
+                yield return null;Check(root.Flow.State==ApplicationState.Paused,"pause available");root.Flow.TryRequest(ApplicationCommand.Resume);
+                yield return Until(()=>root.CurrentScreen.GetComponent<RunUpgradePanel>().IsOpen,"resume returns to upgrade");
+                Submit("upgrade-return-to-menu");yield return Until(()=>root.Flow.State==ApplicationState.MainMenu,"pending upgrade saved");
+                Submit("continue");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay,"pending upgrade Continue");
+                game=root.CurrentGameplay;game.PollLocalDevices=false;game.Input.HandleFocus(true);root.Flow.TryRequest(ApplicationCommand.Resume);
+                yield return Until(()=>root.CurrentScreen.GetComponent<RunUpgradePanel>().IsOpen,"pending modal restored");
+                Submit("upgrade-1");Submit("confirm-upgrade");
+                yield return Until(()=>game.LevelNumber==2,"confirmed upgrade advances");
+                Check(game.Life[0].Current==55 && game.Life[0].Maximum==120,"health granted exactly once");
+                Check(game.Input.MovementNeedsNeutral,"modal requires movement release");
+                Debug.Log("[SteamSessionValidation] UPGRADES-PASS");Application.Quit(0);yield break;
+            }
             if(mode=="classes")
             {
                 root.CurrentScreen.OpenRunSetup(()=>root.Flow.TryRequest(ApplicationCommand.NewGame),true,"New Game");

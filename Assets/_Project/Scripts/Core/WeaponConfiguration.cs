@@ -34,6 +34,13 @@ namespace SpaceCrawler.Core
 
         public static WeaponConfiguration Melee(string id, int damage, float cooldown, float range, float arcDegrees)
             => new WeaponConfiguration(id, AttackKind.Melee, damage, cooldown, range, arcDegrees, 0, 0);
+
+        public WeaponConfiguration WithDamageBonus(int percent)
+        {
+            if(percent<0 || percent>30)throw new ArgumentOutOfRangeException(nameof(percent));
+            int damage=checked((int)(((long)Damage*(100+percent)+50)/100));
+            return new WeaponConfiguration(Id,Kind,damage,Cooldown,MeleeRange,MeleeArcDegrees,ProjectileSpeed,ProjectileLifetime);
+        }
         public static WeaponConfiguration Projectile(string id, int damage, float cooldown, float speed, float lifetime)
             => new WeaponConfiguration(id, AttackKind.Projectile, damage, cooldown, 0, 0, speed, lifetime);
 

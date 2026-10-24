@@ -349,7 +349,7 @@ namespace SpaceCrawler.Tests.PlayMode
         private static IEnumerator WaitFor(Func<bool> condition)
         {
             var until = Time.realtimeSinceStartup + 10;
-            while (!condition()) { Assert.That(Time.realtimeSinceStartup, Is.LessThan(until)); yield return null; }
+            while (!condition()) { var app=Object.FindFirstObjectByType<ApplicationRoot>();if(app?.CurrentGameplay?.UpgradePending==true)app.CurrentGameplay.SelectUpgrade(2);Assert.That(Time.realtimeSinceStartup, Is.LessThan(until)); yield return null; }
             yield return Frames(2);
         }
     }

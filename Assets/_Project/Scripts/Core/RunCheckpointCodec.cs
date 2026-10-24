@@ -56,6 +56,12 @@ namespace SpaceCrawler.Core
                     writer.Write(checkpoint.Rewards?.Version ?? 0);
                     if(checkpoint.Rewards!=null)
                     {writer.Write(checkpoint.Rewards.BaseXp);foreach(float factor in checkpoint.Rewards.Factors)writer.Write(factor);}
+                    writer.Write(checkpoint.Upgrades?.Version ?? 0);
+                    if(checkpoint.Upgrades!=null)
+                    {
+                        writer.Write(checkpoint.Upgrades.GrantedLevels);writer.Write(checkpoint.Upgrades.PendingLevel);
+                        foreach(int choice in checkpoint.Upgrades.Choices)writer.Write(choice);
+                    }
                 }
                 payload = stream.ToArray();
             }
@@ -185,9 +191,21 @@ namespace SpaceCrawler.Core
                     if(version!=0)
                     {int baseXp=reader.ReadInt32();var factors=new float[8];for(int i=0;i<8;i++)factors[i]=reader.ReadSingle();rewards=new RunRewardPolicy(baseXp,factors);}
                 }
+                RunUpgrades upgrades=null;
+                if(schema>=8)
+                {
+                    int upgradeVersion=reader.ReadInt32();
+                    if(upgradeVersion!=0 && upgradeVersion!=RunUpgrades.CurrentVersion)throw new NotSupportedException("Saved upgrade policy is unsupported.");
+                    if(upgradeVersion!=0)
+                    {
+                        int granted=reader.ReadInt32(),pending=reader.ReadInt32();var choices=new int[players*2];
+                        for(int i=0;i<choices.Length;i++)choices[i]=reader.ReadInt32();
+                        upgrades=new RunUpgrades(players,granted,pending,choices);
+                    }
+                }
                 if (stream.Position != stream.Length) throw new InvalidDataException("Saved run contains unexpected data.");
                 return new RunCheckpoint(seed, generation, fingerprint, mode, current, visits, equipment,
-                    runSeed, sequenceVersion, level, seeds, fingerprints, routes, life, schema, world, difficulty, partnerVisits,encounterVersion,rewards);
+                    runSeed, sequenceVersion, level, seeds, fingerprints, routes, life, schema, world, difficulty, partnerVisits,encounterVersion,rewards,upgrades);
             }
         }
     }

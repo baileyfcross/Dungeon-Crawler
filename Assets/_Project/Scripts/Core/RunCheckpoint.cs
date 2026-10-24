@@ -9,8 +9,9 @@ namespace SpaceCrawler.Core
     /// <summary>Immutable room-entry data. Player slots are stable gameplay identities, not network IDs.</summary>
     public sealed class RunCheckpoint
     {
-        public const int SchemaVersion = 7;
+        public const int SchemaVersion = 8;
         public RunRewardPolicy Rewards { get; }
+        public RunUpgrades Upgrades { get; }
         public int EncounterVersion { get; }
         public RunDifficulty Difficulty { get; }
         public IReadOnlyList<RunRoomId> PartnerRoomVisits { get; }
@@ -38,7 +39,7 @@ namespace SpaceCrawler.Core
             ulong? runSeed = null, int sequenceVersion = 0, int levelNumber = 1, IReadOnlyList<ulong> levelSeeds = null,
             IReadOnlyList<string> levelFingerprints = null, IReadOnlyList<IReadOnlyList<RunRoomId>> completedRoutes = null,
             RunLifeSnapshot life = null, int sourceSchemaVersion = SchemaVersion, RunWorldSnapshot world = null,
-            RunDifficulty difficulty = RunDifficulty.Legacy, IReadOnlyList<RunRoomId> partnerRoomVisits = null, int encounterVersion = 0, RunRewardPolicy rewards = null)
+            RunDifficulty difficulty = RunDifficulty.Legacy, IReadOnlyList<RunRoomId> partnerRoomVisits = null, int encounterVersion = 0, RunRewardPolicy rewards = null, RunUpgrades upgrades = null)
         {
             if (sequenceVersion != 0 && sequenceVersion != 1 && sequenceVersion != RunSequence.CurrentVersion) throw new NotSupportedException("Saved level policy is not supported.");
             var levelCount = sequenceVersion == 0 ? 1 : RunSequence.LevelCount;
@@ -93,6 +94,10 @@ namespace SpaceCrawler.Core
             PartnerRoomVisits = Array.AsReadOnly(new List<RunRoomId>(partnerRoomVisits).ToArray());
             if (world != null && world.Players.Count != (int)mode) throw new ArgumentException("Saved pose slots do not match the session.");
             Life = life ?? RunLifeSnapshot.Fresh((int)mode); SourceSchemaVersion = sourceSchemaVersion;
+            if(upgrades!=null && (upgrades.Players!=(int)mode || sequenceVersion==0
+                || (upgrades.Pending && upgrades.PendingLevel!=levelNumber)
+                || (!upgrades.Pending && upgrades.GrantedLevels!=levelNumber-1)))throw new ArgumentException("Saved upgrade progression does not match the level.");
+            Upgrades=upgrades;
             if (Life.Players.Count != (int)mode || new RunLife(Life).Ended)
                 throw new ArgumentException("Only an unfinished run can be checkpointed.");
         }
@@ -104,7 +109,7 @@ namespace SpaceCrawler.Core
         }
 
         public static RunCheckpoint Capture(RunSequence sequence, RunProgression progression, SavedSessionMode mode, IReadOnlyList<string> equipment, RunLifeSnapshot life = null, RunWorldSnapshot world = null,
-            RunDifficulty difficulty = RunDifficulty.Legacy, IReadOnlyList<RunRoomId> partnerRoomVisits = null, int encounterVersion = 0, RunRewardPolicy rewards = null)
+            RunDifficulty difficulty = RunDifficulty.Legacy, IReadOnlyList<RunRoomId> partnerRoomVisits = null, int encounterVersion = 0, RunRewardPolicy rewards = null, RunUpgrades upgrades = null)
         {
             if (sequence == null || !ReferenceEquals(sequence.CurrentGraph, progression.Graph)
                 || (progression.State != RoomFlowState.Playing && progression.State != RoomFlowState.Terminal))
@@ -113,7 +118,7 @@ namespace SpaceCrawler.Core
             for (var i = 0; i < seeds.Length; i++) { seeds[i] = sequence.Levels[i].Seed; fingerprints[i] = GraphFingerprint.Compute(sequence.Levels[i]); }
             return new RunCheckpoint(progression.Graph.Seed, progression.Graph.GenerationVersion, GraphFingerprint.Compute(progression.Graph),
                 mode, progression.CurrentRoomId, progression.VisitedRooms, equipment, sequence.Seed, sequence.Version,
-                sequence.LevelNumber, seeds, fingerprints, sequence.CompletedRoutes, life, SchemaVersion, world, difficulty, partnerRoomVisits, encounterVersion, rewards);
+                sequence.LevelNumber, seeds, fingerprints, sequence.CompletedRoutes, life, SchemaVersion, world, difficulty, partnerRoomVisits, encounterVersion, rewards, upgrades);
         }
     }
 }
