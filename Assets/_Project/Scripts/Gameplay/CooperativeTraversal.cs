@@ -17,6 +17,7 @@ namespace SpaceCrawler.Gameplay
         private RunProgression partnerProgression;
         private int roomCacheLevel;
         private int inputRoom=-1,inputLevel;
+        public int EncounterVersion { get; private set; }
         public RunDifficulty Difficulty { get; private set; }
         public bool IndependentTravel => sequence!=null && Run!=null && Run.GenerationVersion>=2;
         public RunRoomId PlayerRoom(int slot) => IndependentTravel ? new RunRoomId(playerRooms[slot]) : CurrentRoom;
@@ -53,7 +54,7 @@ namespace SpaceCrawler.Gameplay
             var choices=Run.Connections.Where(e=>e.From.Equals(destination)).ToArray();
             loader.LoadSharedRoom(Run,destination,choices,(edge,collider,present)=>ObserveCooperativeDoor(destination,edge,collider,present));
             var room=loader.CurrentRoom;
-            IReadOnlyList<EnemySpawn> selected=room.SelectEncounter(Difficulty,destination.Equals(Run.StartRoomId),node.IsTerminal,Run.Seed^(ulong)id);
+            IReadOnlyList<EnemySpawn> selected=room.SelectEncounter(Difficulty,destination.Equals(Run.StartRoomId),node.IsTerminal,Run.Seed^(ulong)id,EncounterVersion);
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if(EnemyFixtureCount>0 || SessionDiagnostics.Option("--session-validation")=="enemies")
                 selected=SessionValidationDriver.CreateEnemySpawns(room,EnemyFixtureCount>0?EnemyFixtureCount:1);
@@ -64,7 +65,8 @@ namespace SpaceCrawler.Gameplay
             if(authoritative)
             {
                 foreach(var target in room.Targets)target.Initialize();
-                persistence.RestoreRoom(LevelNumber,destination,room,()=>TrySave());
+                int rewardLevel=LevelNumber;
+                persistence.RestoreRoom(rewardLevel,destination,room,()=>TrySave(),a=>RewardEnemy(rewardLevel,destination,a));
             }
             else foreach(var target in room.Targets)target.PresentAuthoritativeHealth(target.InitialHealth,target.InitialHealth,true);
             return loader;
@@ -74,6 +76,7 @@ namespace SpaceCrawler.Gameplay
             SetRoomReady(false);Authority?.SetRunning(false,epoch);
             if(roomCacheLevel!=LevelNumber)ClearCooperativeRooms();
             foreach(int id in playerRooms.Distinct())EnsureCooperativeRoom(id,true);
+            enemies?.RetainOccupiedRooms(playerRooms.Distinct().Select(id=>cooperativeRooms[id].CurrentRoom));
             for(int i=0;i<2;i++)
             {
                 var rig=players[i];rig.Simulation.SetActive(false);rig.Motor.Stop();
@@ -152,6 +155,7 @@ namespace SpaceCrawler.Gameplay
         private void AdvanceCooperativeEnemies()
         {
             if(Mode!=SessionRole.Host || !roomReady || stopped || stopRequested || RunEnded || Life.Ended)return;
+            enemies.RetainOccupiedRooms(playerRooms.Distinct().Select(id=>cooperativeRooms[id].CurrentRoom));
             foreach(int id in playerRooms.Distinct())enemies.Advance(cooperativeRooms[id].CurrentRoom,true,Time.fixedDeltaTime);
         }
         private void CaptureCooperativeRooms()
@@ -164,7 +168,7 @@ namespace SpaceCrawler.Gameplay
             var world=persistence.CapturePlayers(players.Select(p=>p.Motor).ToArray(),players.Select(p=>p.Simulation).ToArray(),players.Select(p=>p.Combat).ToArray(),
                 playerRooms.Select(id=>cooperativeRooms[id].CurrentRoom).ToArray());
             if(commitCheckpoint!=null)persistence.Commit(RunCheckpoint.Capture(sequence,Progression,SavedSessionMode.Cooperative,
-                new[]{weapon.Id,weapon.Id},Life.Capture(),world,Difficulty,partnerProgression.VisitedRooms),commitCheckpoint);
+                new[]{weapon.Id,weapon.Id},Life.Capture(),world,Difficulty,partnerProgression.VisitedRooms,EncounterVersion,RewardPolicy),commitCheckpoint);
         }
         private void SendCooperativeState()
         {
@@ -182,7 +186,7 @@ namespace SpaceCrawler.Gameplay
                     var room=cooperativeRooms[id].CurrentRoom;writer.WriteValueSafe(id);writer.WriteValueSafe(room.Targets.Count);
                     foreach(var target in room.Targets)writer.WriteValueSafe(new TargetStateSnapshot{Identity=target.Identity.Value,Current=target.Health.Current,Maximum=target.Health.Maximum});
                     writer.WriteValueSafe(room.Encounter.Enemies.Count);
-                    foreach(var enemy in room.Encounter.Enemies)writer.WriteValueSafe(new EnemyStateSnapshot{Encounter=enemy.Identity.Encounter,Spawn=enemy.Identity.Spawn,
+                    foreach(var enemy in room.Encounter.Enemies)writer.WriteValueSafe(new EnemyStateSnapshot{Encounter=enemy.Identity.Encounter,Spawn=enemy.Identity.Spawn,Archetype=(int)enemy.Archetype,
                         Restored=enemy.Restored,Revision=enemy.Revision,Current=enemy.Target.Health.Current,Maximum=enemy.Target.Health.Maximum,
                         Lifecycle=(int)enemy.Lifecycle,Aggro=enemy.AggroPlayer,Position=enemy.transform.position,Behaviour=(int)enemy.BehaviourState,
                         Facing=enemy.Facing,WindupProgress=enemy.WindupProgress,StrikeSequence=enemy.StrikeSequence});
@@ -190,6 +194,7 @@ namespace SpaceCrawler.Gameplay
                 writer.WriteValueSafe(players.Sum(p=>p.Combat.Projectiles.Count));
                 foreach(var rig in players)foreach(var projectile in rig.Combat.Projectiles)
                     writer.WriteValueSafe(new ProjectileStateSnapshot{Owner=rig.State.Player.Value,Sequence=projectile.Execution.Sequence,Position=projectile.Position});
+                WriteEnemyProjectiles(writer);
                 network.CustomMessagingManager.SendNamedMessage(StateMessage,remoteSender.Value,writer,
                     writer.Length>1200?NetworkDelivery.ReliableFragmentedSequenced:NetworkDelivery.UnreliableSequenced);
             }
@@ -226,7 +231,7 @@ namespace SpaceCrawler.Gameplay
                     for(int i=0;i<enemies;i++)
                     {
                         reader.ReadValueSafe(out EnemyStateSnapshot enemy);var actor=room.Encounter.Enemies[i];
-                        if(enemy.Encounter!=RoomIncarnation(id) || enemy.Spawn!=actor.Identity.Spawn || float.IsNaN(enemy.Position.sqrMagnitude) || float.IsInfinity(enemy.Position.sqrMagnitude))
+                        if(enemy.Encounter!=RoomIncarnation(id) || enemy.Spawn!=actor.Identity.Spawn || enemy.Archetype!=(int)actor.Archetype || float.IsNaN(enemy.Position.sqrMagnitude) || float.IsInfinity(enemy.Position.sqrMagnitude))
                             throw new InvalidOperationException("Room enemy identity or position mismatch.");
                         actor.ApplySnapshot(actor.Identity,(EnemyLifecycle)enemy.Lifecycle,enemy.Current,enemy.Maximum,enemy.Revision,enemy.Aggro,enemy.Restored);
                         actor.transform.position=enemy.Position;actor.ApplyBehaviourSnapshot(enemy.Behaviour,enemy.Facing,enemy.WindupProgress,enemy.StrikeSequence);
@@ -247,6 +252,7 @@ namespace SpaceCrawler.Gameplay
                 }
                 foreach(var key in projectileViews.Keys.Where(k=>!present.Contains(k)).ToArray())
                 {Destroy(projectileViews[key].gameObject);projectileViews.Remove(key);}
+                ReadEnemyProjectiles(reader);
                 SetRoomReady(true);Changed?.Invoke();
             }
             catch(Exception error){Fail("Rejected cooperative state: "+error.Message);}

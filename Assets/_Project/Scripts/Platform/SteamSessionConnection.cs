@@ -11,7 +11,7 @@ namespace SpaceCrawler.Platform
     /// <summary>Steam transport identity and lobby membership authorize admission, never a claimed account in a packet.</summary>
     public sealed class SteamSessionConnection
     {
-        public const string Protocol = "session9-generation2-sequence2";
+        public const string Protocol = "session11-generation2-sequence2";
         [Serializable] private sealed class Hello { public string protocol,build,profile; }
         private readonly Func<ulong,bool> member;
         private readonly Dictionary<ulong,Guid> profiles=new Dictionary<ulong,Guid>();

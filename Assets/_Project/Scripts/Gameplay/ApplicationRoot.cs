@@ -348,9 +348,11 @@ namespace SpaceCrawler.Gameplay
                     if (pendingSessionRole == SessionRole.None)
                     {
                         CurrentGameplay = Instantiate(gameplaySession);
-                        CurrentGameplay.Bind(new PlayerIdentity(1), Flow, useLevelSequence: true, checkpoint: pendingCheckpoint,
+                        CurrentGameplay.Bind(new PlayerIdentity(1), Flow,
+                            runSeed: Debug.isDebugBuild && ulong.TryParse(SessionDiagnostics.Option("--solo-seed"),out var soloSeed) ? soloSeed : (ulong?)null,
+                            useLevelSequence: true, checkpoint: pendingCheckpoint,
                             save: CommitCheckpoint, restoredWeapon: pendingCheckpoint != null ? multiplayerSession.ResolveWeapon(pendingCheckpoint.EquipmentIds[0]) : null,
-                            profileId: Profile.Id, finish: FinishRun, difficulty:StartingDifficulty);
+                            profileId: Profile.Id, finish: FinishRun, difficulty:StartingDifficulty,enableKillRewards:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-rewards")=="legacy"));
                     }
                     else
                     {
@@ -366,7 +368,7 @@ namespace SpaceCrawler.Gameplay
                         ulong? seed = pendingSessionRole == SessionRole.Host && ulong.TryParse(SessionDiagnostics.Option("--session-seed"), out var requestedSeed) ? requestedSeed : (ulong?)null;
                         CurrentMultiplayer.Bind(pendingSessionRole, Flow, address, port, seed, useLevelSequence: true,
                             checkpoint: pendingCheckpoint, save: CommitCheckpoint, profileId: Profile.Id, finish: FinishRun,
-                            pendingRewards: progress.PendingFor, acknowledgeReward: progress.Acknowledge,difficulty:StartingDifficulty);
+                            pendingRewards: progress.PendingFor, acknowledgeReward: progress.Acknowledge,difficulty:StartingDifficulty,enableKillRewards:!(Debug.isDebugBuild && SessionDiagnostics.Option("--run-rewards")=="legacy"));
                     }
                 }
                 else { CurrentGameplay = null; pendingSessionRole = SessionRole.None; }

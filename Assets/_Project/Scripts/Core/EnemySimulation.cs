@@ -62,8 +62,10 @@ namespace SpaceCrawler.Core
             var died = !Health.IsAlive;
             if (died) { Lifecycle = EnemyLifecycle.Dead; AggroTarget = null; }
             Revision++;
-            Changed?.Invoke();
+            // The complete authoritative death state exists before domain reactions (such as XP).
+            // Presentation and persistence observe the resulting combined state afterwards.
             if (died) Died?.Invoke();
+            Changed?.Invoke();
             return true;
         }
 

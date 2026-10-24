@@ -130,12 +130,13 @@ namespace SpaceCrawler.Gameplay
                 var node = session.Run.GetRoom(destination);
                 ReplaceRoom(session.Run, destination);
                 CurrentRoom.InitializeEncounter(true, checked(++encounterIncarnation),
-                    CurrentRoom.SelectEncounter(session.Difficulty,destination.Equals(session.Run.StartRoomId),node.IsTerminal,session.Run.Seed ^ (ulong)destination.Value),session.Difficulty);
+                    CurrentRoom.SelectEncounter(session.Difficulty,destination.Equals(session.Run.StartRoomId),node.IsTerminal,session.Run.Seed ^ (ulong)destination.Value,session.EncounterVersion),session.Difficulty);
                 var sourceRoom = CurrentRoom;
                 CurrentRoom.ConfigureExits(Progression.ConnectionsFrom(destination), Progression.Player, session.Motor.Body,
                     intent => ReferenceEquals(CurrentRoom, sourceRoom) && RequestExit(intent));
                 session.Combat.RegisterRoomTargets(CurrentRoom.CombatTargets);
-                session.Persistence.RestoreRoom(session.LevelNumber,destination,CurrentRoom,() => session.TrySave());
+                int rewardLevel=session.LevelNumber;
+                session.Persistence.RestoreRoom(rewardLevel,destination,CurrentRoom,() => session.TrySave(),a=>session.RewardEnemy(rewardLevel,destination,a));
                 session.Persistence.PlacePlayers(CurrentRoom,arrivalPort,new[] { session.Motor },new[] { session.Simulation },new[] { session.Combat });
                 arrivalPort = -1;
                 session.Motor.Body.simulated = true;

@@ -19,17 +19,18 @@ namespace SpaceCrawler.Core
     }
     public readonly struct SavedEnemy
     {
+        public EnemyArchetype Archetype { get; }
         public int Spawn { get; }
         public int Health { get; }
         public int Maximum { get; }
         public Vector2 Position { get; }
         public Vector2 Facing { get; }
-        public SavedEnemy(int spawn, int health, int maximum, Vector2 position, Vector2 facing)
+        public SavedEnemy(int spawn, int health, int maximum, Vector2 position, Vector2 facing, EnemyArchetype archetype = EnemyArchetype.Melee)
         {
-            if (spawn < 1 || spawn > 32 || maximum < 1 || health < 0 || health > maximum
+            if ((archetype != EnemyArchetype.Melee && archetype != EnemyArchetype.Ranged) || spawn < 1 || spawn > 32 || maximum < 1 || health < 0 || health > maximum
                 || !PlayerSimulation.IsFinite(position) || !PlayerSimulation.IsFinite(facing) || Math.Abs(facing.LengthSquared()-1) > .001f)
                 throw new ArgumentException("Invalid saved enemy state.");
-            Spawn = spawn; Health = health; Maximum = maximum; Position = position; Facing = facing;
+            Archetype=archetype; Spawn = spawn; Health = health; Maximum = maximum; Position = position; Facing = facing;
         }
     }
     public sealed class SavedRoomState

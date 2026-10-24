@@ -16,7 +16,11 @@ namespace SpaceCrawler.Gameplay
         {
             if (actor == null) actor = GetComponent<EnemyActor>();
             if (actor == null || actor.Configuration == null) return;
-            if (actor.StrikeSequence > presentedStrike) { presentedStrike = actor.StrikeSequence; strikeUntil = Time.time + .12f; }
+            if (actor.StrikeSequence > presentedStrike)
+            {
+                presentedStrike = actor.StrikeSequence; strikeUntil = Time.time + .12f;
+                if(actor.Archetype==EnemyArchetype.Ranged)GameAudio.Emit(SoundCue.BlasterShot);
+            }
             var alive = actor.Lifecycle == EnemyLifecycle.Alive;
             indicator.enabled = alive;
             if (!alive) return;
@@ -28,10 +32,15 @@ namespace SpaceCrawler.Gameplay
             bool striking=state==EnemyBehaviourState.Strike || Time.time<strikeUntil;
             indicator.widthMultiplier=normalWidth*(windup ? 1.5f+actor.WindupProgress : 1);
             indicator.startColor = indicator.endColor = striking ? Color.white : windup
-                ? Color.Lerp(new Color(1,.8f,.15f),new Color(1,.2f,.1f),actor.WindupProgress) : new Color(1, .8f, .4f);
+                ? Color.Lerp(new Color(1,.8f,.15f),new Color(1,.2f,.1f),actor.WindupProgress) : actor.Archetype==EnemyArchetype.Ranged ? new Color(.9f,.35f,1) : new Color(1, .8f, .4f);
             var origin = transform.position;
             if (!windup)
             { indicator.positionCount = 2; indicator.SetPosition(0, origin); indicator.SetPosition(1, origin + (Vector3)actor.Facing * .7f); return; }
+            if(actor.Archetype==EnemyArchetype.Ranged)
+            {
+                indicator.positionCount=2;indicator.SetPosition(0,origin);
+                indicator.SetPosition(1,origin+(Vector3)actor.Facing*actor.Configuration.Reach);return;
+            }
             var angle = Mathf.Atan2(actor.Facing.y, actor.Facing.x) * Mathf.Rad2Deg;
             indicator.positionCount = 15; indicator.SetPosition(0, origin);
             for (var i = 0; i <= 12; i++)

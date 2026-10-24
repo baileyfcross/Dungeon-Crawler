@@ -12,7 +12,7 @@ namespace SpaceCrawler.Gameplay
 {
     /// <summary>Opt-in two-process fixtures. Traversal uses ordinary player commands; health fixtures
     /// explicitly simulate damage/XP through host APIs without enabling a gameplay reward source. Absent in release.</summary>
-    public sealed class SessionValidationDriver : MonoBehaviour
+    public sealed partial class SessionValidationDriver : MonoBehaviour
     {
         private MultiplayerSession session;
         private ApplicationFlow flow;
@@ -89,6 +89,8 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             yield return Until(() => session.RoomReady, "initial room handshake");
+            if(SessionDiagnostics.Option("--session-validation").StartsWith("rewards")){yield return RunKillRewards();yield break;}
+            if(SessionDiagnostics.Option("--session-validation").StartsWith("ranged")){yield return RunRangedCombat();yield break;}
             if(SessionDiagnostics.Option("--session-validation").StartsWith("exploration")){yield return RunExploration();yield break;}
             if(SessionDiagnostics.Option("--session-validation")=="audio"){yield return RunAudio();yield break;}
             if (SessionDiagnostics.Option("--session-validation") == "traversal" || SessionDiagnostics.Option("--session-validation") == "traversal-resume")

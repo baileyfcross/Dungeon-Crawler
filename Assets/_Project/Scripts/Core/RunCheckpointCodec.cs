@@ -46,12 +46,16 @@ namespace SpaceCrawler.Core
                         {
                             writer.Write(room.Level); writer.Write(room.Room.Value); writer.Write(room.Enemies.Count);
                             foreach (var enemy in room.Enemies)
-                            { writer.Write(enemy.Spawn); writer.Write(enemy.Health); writer.Write(enemy.Maximum); WriteVector(writer,enemy.Position); WriteVector(writer,enemy.Facing); }
+                            { writer.Write(enemy.Spawn); writer.Write(enemy.Health); writer.Write(enemy.Maximum); WriteVector(writer,enemy.Position); WriteVector(writer,enemy.Facing); writer.Write((int)enemy.Archetype); }
                         }
                     }
                     writer.Write((int)checkpoint.Difficulty);
                     writer.Write(checkpoint.PartnerRoomVisits.Count);
                     foreach (var room in checkpoint.PartnerRoomVisits) writer.Write(room.Value);
+                    writer.Write(checkpoint.EncounterVersion);
+                    writer.Write(checkpoint.Rewards?.Version ?? 0);
+                    if(checkpoint.Rewards!=null)
+                    {writer.Write(checkpoint.Rewards.BaseXp);foreach(float factor in checkpoint.Rewards.Factors)writer.Write(factor);}
                 }
                 payload = stream.ToArray();
             }
@@ -157,7 +161,7 @@ namespace SpaceCrawler.Core
                         int roomLevel = reader.ReadInt32(); var roomId = new RunRoomId(reader.ReadInt32()); int enemyCount = reader.ReadInt32();
                         if (enemyCount < 0 || enemyCount > 32) throw new InvalidDataException("Invalid saved enemy count.");
                         var enemies = new SavedEnemy[enemyCount];
-                        for (int j = 0; j < enemyCount; j++) enemies[j] = new SavedEnemy(reader.ReadInt32(),reader.ReadInt32(),reader.ReadInt32(),ReadVector(reader),ReadVector(reader));
+                        for (int j = 0; j < enemyCount; j++) enemies[j] = new SavedEnemy(reader.ReadInt32(),reader.ReadInt32(),reader.ReadInt32(),ReadVector(reader),ReadVector(reader),schema>=6?(EnemyArchetype)reader.ReadInt32():EnemyArchetype.Melee);
                         rooms[i] = new SavedRoomState(roomLevel,roomId,enemies);
                     }
                     world = new RunWorldSnapshot(poses,rooms);
@@ -172,9 +176,18 @@ namespace SpaceCrawler.Core
                     partnerVisits = new RunRoomId[partnerCount];
                     for (int i = 0; i < partnerCount; i++) partnerVisits[i] = new RunRoomId(reader.ReadInt32());
                 }
+                var encounterVersion=schema>=6?reader.ReadInt32():0;
+                RunRewardPolicy rewards=null;
+                if(schema>=7)
+                {
+                    int version=reader.ReadInt32();
+                    if(version!=0 && version!=RunRewardPolicy.CurrentVersion)throw new NotSupportedException("Saved reward policy is unsupported.");
+                    if(version!=0)
+                    {int baseXp=reader.ReadInt32();var factors=new float[8];for(int i=0;i<8;i++)factors[i]=reader.ReadSingle();rewards=new RunRewardPolicy(baseXp,factors);}
+                }
                 if (stream.Position != stream.Length) throw new InvalidDataException("Saved run contains unexpected data.");
                 return new RunCheckpoint(seed, generation, fingerprint, mode, current, visits, equipment,
-                    runSeed, sequenceVersion, level, seeds, fingerprints, routes, life, schema, world, difficulty, partnerVisits);
+                    runSeed, sequenceVersion, level, seeds, fingerprints, routes, life, schema, world, difficulty, partnerVisits,encounterVersion,rewards);
             }
         }
     }

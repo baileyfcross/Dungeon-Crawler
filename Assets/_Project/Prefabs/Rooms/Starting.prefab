@@ -130,6 +130,8 @@ MonoBehaviour:
     anchor: {fileID: 481365664481358922}
     behaviour: {fileID: 11400000, guid: 6b6544a8deefdfa44a5bba8d4604859c, type: 2}
   baseEnemyCount: 3
+  rangedEnemy: {fileID: 3451927297131519445, guid: 0a09303d936ffed4cb02ac4e35890a89, type: 3}
+  rangedBehaviour: {fileID: 11400000, guid: b9b0a21a78b5ab64186bb0623d8fe38b, type: 2}
   runExitAnchor: {fileID: 4518953225767633171}
 --- !u!1 &126771286437552761
 GameObject:

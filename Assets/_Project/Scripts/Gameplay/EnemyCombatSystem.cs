@@ -21,6 +21,57 @@ namespace SpaceCrawler.Gameplay
         private RoomNavigation navigation;
         private AuthoredRoom room;
         private float clock;
+        private readonly List<HostileShot> shots=new List<HostileShot>();
+        private long shotSequence;
+        private sealed class HostileShot
+        {public AuthoredRoom Room;public EnemyActor Source;public EnemyProjectileSimulation Model;public EnemyProjectileView View;public long Sequence;}
+        public int ProjectileCount => shots.Count;
+        public IEnumerable<EnemyProjectileSnapshot> ProjectileSnapshots
+        {
+            get{foreach(var shot in shots)yield return new EnemyProjectileSnapshot{Encounter=shot.Source.Identity.Encounter,Spawn=shot.Source.Identity.Spawn,
+                Sequence=shot.Sequence,Position=Unity(shot.Model.Position),Direction=Unity(shot.Model.Direction)};}
+        }
+        public void RetainOccupiedRooms(IEnumerable<AuthoredRoom> occupied)
+        {
+            var keep=new HashSet<AuthoredRoom>(occupied);
+            for(int i=shots.Count-1;i>=0;i--)if(shots[i].Room==null || !keep.Contains(shots[i].Room))RemoveShot(i);
+        }
+        private void RemoveShot(int index){if(shots[index].View!=null)UnityEngine.Object.Destroy(shots[index].View.gameObject);shots.RemoveAt(index);}
+        private void Fire(EnemyActor enemy,Vector2 origin)
+        {
+            if(shots.Count>=32)return;
+            var material=enemy.GetComponentInChildren<LineRenderer>().sharedMaterial;
+            var model=new EnemyProjectileSimulation(Core(origin),Core(enemy.Facing),enemy.RangedConfiguration.ProjectileSpeed);
+            var view=EnemyProjectileView.Create(owner,material);view.Present(origin,enemy.Facing);
+            shots.Add(new HostileShot{Room=room,Source=enemy,Model=model,View=view,Sequence=++shotSequence});
+        }
+        private void AdvanceShots(float seconds)
+        {
+            for(int index=shots.Count-1;index>=0;index--)
+            {
+                var shot=shots[index];if(shot.Room==null){RemoveShot(index);continue;}
+                if(shot.Room!=room)continue;
+                var model=life();var start=Unity(shot.Model.Position);var direction=Unity(shot.Model.Direction);
+                float distance=shot.Model.Distance(seconds),travelled=distance;int victim=-1;bool blocked=false;
+                foreach(var hit in Physics2D.CircleCastAll(start,.11f,direction,distance))
+                    if(RoomNavigation.IsSolid(hit.collider) && hit.distance<=travelled){travelled=hit.distance;blocked=true;}
+                for(int slot=0;slot<model.Count;slot++)
+                {
+                    Vector2 player=position(slot);
+                    if(model[slot].State!=PlayerLifeState.Alive || !room.PlayableBounds.Contains(room.transform.InverseTransformPoint(player)))continue;
+                    // Continuous segment/circle sweep; never skip a player on a long fixed step.
+                    Vector2 delta=start-player;float along=Vector2.Dot(delta,direction),c=delta.sqrMagnitude-.46f*.46f;
+                    float discriminant=along*along-c;if(discriminant<0)continue;
+                    float entry=c<=0?0:-along-Mathf.Sqrt(discriminant);
+                    if(entry>=0 && entry<travelled){travelled=entry;victim=slot;}
+                }
+                shot.Model.Advance(seconds,travelled,blocked||victim>=0 || !room.PlayableBounds.Contains(room.transform.InverseTransformPoint(start+direction*travelled)));
+                shot.View.Present(Unity(shot.Model.Position),direction);
+                if(!shot.Model.Active)RemoveShot(index);
+                if(victim>=0)damage(new PlayerIdentity(victim+1),shot.Model.AttackId,shot.Source.Configuration.Damage);
+                if(model.Ended)break;
+            }
+        }
         private sealed class Route { public List<Vector3> Points; public int Next; public float Due; public Vector2 Destination; }
 
         public EnemyCombatSystem(Transform owner, Func<int, Vector2> position, Func<RunLife> life, Action<PlayerIdentity, Guid, int> damage)
@@ -35,7 +86,8 @@ namespace SpaceCrawler.Gameplay
             // A failed room replacement must never tick the retired encounter's components.
             if (current == null) { room = null; return; }
             room=current;
-            if (room?.Encounter == null || !HasMelee()) return;
+            if(running && !life().Ended)AdvanceShots(seconds);
+            if (room?.Encounter == null || !HasBehaviour()) return;
             if(!contexts.TryGetValue(room,out var context))
             {
                 sharedNavigation ??= new RoomNavigation(owner);
@@ -63,10 +115,14 @@ namespace SpaceCrawler.Gameplay
                 {
                     var victim = brain.StrikeTarget.Value;
                     if (model[victim.Value - 1].State == PlayerLifeState.Alive && RoomNavigation.ClearSight(origin, position(victim.Value - 1)))
-                        damage(victim, Guid.NewGuid(), enemy.Configuration.Damage);
+                        {
+                            if(enemy.Archetype==EnemyArchetype.Ranged)Fire(enemy,origin);
+                            else damage(victim, Guid.NewGuid(), enemy.Configuration.Damage);
+                        }
                 }
                 if (!brain.Destination.HasValue) continue;
                 var destination = Unity(brain.Destination.Value);
+                if(!room.PlayableBounds.Contains(room.transform.InverseTransformPoint(destination)))continue;
                 if (!routes.TryGetValue(enemy, out var route)) { route = new Route { Due = clock + (enemy.Identity.Spawn - 1) * .01f }; routes.Add(enemy, route); }
                 if (clock >= route.Due)
                 {
@@ -80,11 +136,11 @@ namespace SpaceCrawler.Gameplay
                 enemy.transform.position = new Vector3(moved.x, moved.y, 0);
             }
         }
-        private bool HasMelee() { foreach (var enemy in room.Encounter.Enemies) if (enemy != null && enemy.Behaviour != null) return true; return false; }
+        private bool HasBehaviour() { foreach (var enemy in room.Encounter.Enemies) if (enemy != null && enemy.Behaviour != null) return true; return false; }
         private static CoreVector Core(Vector2 value) => new CoreVector(value.x, value.y);
         private static Vector2 Unity(CoreVector value) => new Vector2(value.X, value.Y);
         public void ClearRooms()
-        { foreach(var entry in contexts.Values)entry.Navigation.Dispose();contexts.Clear();routes.Clear();room=null; }
+        { while(shots.Count>0)RemoveShot(shots.Count-1);foreach(var entry in contexts.Values)entry.Navigation.Dispose();contexts.Clear();routes.Clear();room=null; }
         public void Dispose() { ClearRooms();sharedNavigation?.Dispose();sharedNavigation=null; }
     }
 }

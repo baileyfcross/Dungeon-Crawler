@@ -12,8 +12,16 @@ namespace SpaceCrawler.Gameplay
         private uint revision;
         public EnemyIdentity Identity { get; private set; }
         public EnemySimulation Simulation { get; private set; }
-        public MeleeEnemyBehaviour Behaviour { get; private set; }
-        public MeleeEnemyConfiguration Configuration { get; private set; }
+        public IEnemyBehaviour Behaviour { get; private set; }
+        public EnemyCombatConfiguration Configuration { get; private set; }
+        public RangedEnemyConfiguration RangedConfiguration { get; private set; }
+        public EnemyArchetype Archetype { get; private set; } = EnemyArchetype.Melee;
+        public void ConfigureRanged(RangedEnemyDefinition definition,RunDifficulty difficulty)
+        {
+            if(!bound || Configuration!=null)throw new InvalidOperationException("Enemy already configured.");
+            Archetype=EnemyArchetype.Ranged;RangedConfiguration=definition.CreateConfiguration(difficulty);Configuration=RangedConfiguration.Combat;
+            if(Simulation!=null)Behaviour=new RangedEnemyBehaviour(Simulation,RangedConfiguration,new System.Numerics.Vector2(transform.position.x,transform.position.y));
+        }
         public EnemyBehaviourState BehaviourState { get; private set; }
         public Vector2 Facing { get; private set; } = Vector2.right;
         public float WindupProgress { get; private set; }
@@ -30,8 +38,8 @@ namespace SpaceCrawler.Gameplay
         public void ConfigureMelee(MeleeEnemyDefinition definition, RunDifficulty difficulty = RunDifficulty.Legacy)
         {
             if (!bound || Configuration != null) throw new InvalidOperationException("Bind an enemy only once before configuring its behaviour.");
-            Configuration = definition.CreateConfiguration(difficulty);
-            if (Simulation != null) Behaviour = new MeleeEnemyBehaviour(Simulation, Configuration,
+            var configuration=definition.CreateConfiguration(difficulty);Configuration=configuration;
+            if (Simulation != null) Behaviour = new MeleeEnemyBehaviour(Simulation, configuration,
                 new System.Numerics.Vector2(transform.position.x, transform.position.y));
         }
         public void SynchronizeBehaviour()
@@ -102,7 +110,7 @@ namespace SpaceCrawler.Gameplay
 
         public void Restore(SavedEnemy saved)
         {
-            if (Simulation == null || saved.Spawn != Identity.Spawn) throw new InvalidOperationException("Only an authoritative matching enemy can be restored.");
+            if (Simulation == null || saved.Spawn != Identity.Spawn || saved.Archetype != Archetype) throw new InvalidOperationException("Only an authoritative matching enemy can be restored.");
             // Restore is not a new death or damage event.
             IsRestoring=true;
             try

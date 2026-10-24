@@ -25,6 +25,12 @@ namespace SpaceCrawler.Gameplay
         public PlayerSimulation Simulation { get; private set; }
         public DungeonGraph Run { get; private set; }
         public RunSequence Sequence { get; private set; }
+        [SerializeField] private RunRewardDefinition rewardDefinition;
+        private RunKillRewards killRewards;
+        public RunRewardPolicy RewardPolicy { get; private set; }
+        internal void RewardEnemy(int level,RunRoomId room,EnemyActor actor)
+        {if(actor.Simulation!=null && actor.Simulation.Lifecycle==EnemyLifecycle.Dead)killRewards?.TryCredit(level,room,actor.Identity.Spawn,actor.Archetype);}
+        public int EncounterVersion { get; private set; }
         public RunDifficulty Difficulty { get; private set; }
         public int LevelNumber => Sequence?.LevelNumber ?? 1;
         public PlayerMotor Motor => motor;
@@ -51,7 +57,7 @@ namespace SpaceCrawler.Gameplay
 
         public void Bind(PlayerIdentity identity, ApplicationFlow flow, ulong? runSeed = null, bool useLevelSequence = false,
             RunCheckpoint checkpoint = null, Action<RunCheckpoint> save = null, WeaponDefinition restoredWeapon = null,
-            Guid? profileId = null, Action<RunEndReceipt> finish = null, RunDifficulty difficulty = RunDifficulty.Legacy)
+            Guid? profileId = null, Action<RunEndReceipt> finish = null, RunDifficulty difficulty = RunDifficulty.Legacy, bool enableKillRewards = false)
         {
             if (Simulation != null) throw new InvalidOperationException("Session is already bound.");
             if (generation == null) throw new InvalidOperationException("Missing run generation definition.");
@@ -61,7 +67,10 @@ namespace SpaceCrawler.Gameplay
             commitCheckpoint = save; this.flow = flow; endRun = finish;
             Persistence = new RunWorldPersistence(checkpoint?.World);
             DifficultyRules.Factor(difficulty); Difficulty=checkpoint?.Difficulty ?? difficulty;
+            EncounterVersion=checkpoint?.EncounterVersion ?? (Difficulty==RunDifficulty.Legacy?0:EncounterComposition.CurrentVersion);
+            RewardPolicy=checkpoint!=null ? checkpoint.Rewards : enableKillRewards ? (rewardDefinition!=null?rewardDefinition.CreatePolicy():RunRewardPolicy.Default()) : null;
             Life = new RunLife(checkpoint?.Life ?? RunLifeSnapshot.Fresh(1));
+            killRewards=new RunKillRewards(Life,RewardPolicy,Difficulty,checkpoint?.World);
             soundState.Observe(Life[0]);
             Life.BindProfile(0, profileId ?? (Life.Capture().Profiles[0] != Guid.Empty ? Life.Capture().Profiles[0] : Guid.NewGuid()));
             Sequence = checkpoint != null ? RunSequence.Restore(checkpoint, generation.CreateConfiguration())
@@ -111,7 +120,7 @@ namespace SpaceCrawler.Gameplay
             if (Life.Ended || rooms?.CurrentRoom == null) return;
             var world = Persistence.Capture(LevelNumber,progression.CurrentRoomId,rooms.CurrentRoom,new[] {motor},new[] {Simulation},new[] {combat});
             if (commitCheckpoint != null && Sequence != null)
-                Persistence.Commit(RunCheckpoint.Capture(Sequence,progression,SavedSessionMode.Solo,new[] {combat.Simulation.EquippedWeapon.Id},Life.Capture(),world,Difficulty),commitCheckpoint);
+                Persistence.Commit(RunCheckpoint.Capture(Sequence,progression,SavedSessionMode.Solo,new[] {combat.Simulation.EquippedWeapon.Id},Life.Capture(),world,Difficulty,encounterVersion:EncounterVersion,rewards:RewardPolicy),commitCheckpoint);
         }
 
         public void SaveCurrent()
@@ -153,7 +162,12 @@ namespace SpaceCrawler.Gameplay
             if (PollLocalDevices) input.SampleMovement();
             if (Persistence != null && Persistence.AutosaveDue(Time.unscaledTime)) TrySave();
         }
-        private void FixedUpdate() => enemies?.Advance(rooms.CurrentRoom, flow.State == ApplicationState.Gameplay && !Life.Ended, Time.fixedDeltaTime);
+        private void FixedUpdate()
+        {
+            if(enemies==null)return;
+            enemies.RetainOccupiedRooms(new[]{rooms.CurrentRoom});
+            enemies.Advance(rooms.CurrentRoom,flow.State==ApplicationState.Gameplay && !Life.Ended,Time.fixedDeltaTime);
+        }
         internal bool TrySave()
         {
             try { SaveCurrent(); return true; }

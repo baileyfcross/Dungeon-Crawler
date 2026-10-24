@@ -48,6 +48,9 @@ namespace SpaceCrawler.Gameplay
             if(cooperative)yield return Until(()=>Net.RoomReady,"room agreement");
             yield return new WaitForSeconds(.15f);
         }
+        [Serializable] private sealed class RewardExpectation {public long Xp;public int Fraction;}
+        private bool Earned => SessionDiagnostics.Option("--completion-rewards")=="earned";
+        private string RewardExpectationPath => System.IO.Path.Combine(SessionDiagnostics.Option("--save-directory"),"reward-expectation.json");
         private IEnumerator Run()
         {
             cooperative=SessionDiagnostics.Option("--session-role")!=null;host=!cooperative || SessionDiagnostics.Option("--session-role")=="host";
@@ -56,7 +59,8 @@ namespace SpaceCrawler.Gameplay
                 yield return Until(()=>root.Flow.State==ApplicationState.MainMenu,"main menu");
                 if(SessionDiagnostics.Option("--completion-validation")=="reload")
                 {
-                    Check(root.Profile.Experience==15 && root.Flow.ContinueAvailable,"profile credit survives restart and fresh unfinished run remains continuable");
+                    var expectation=Earned?JsonUtility.FromJson<RewardExpectation>(System.IO.File.ReadAllText(RewardExpectationPath)):new RewardExpectation{Xp=15};
+                    Check(root.Profile.Experience==expectation.Xp && root.Profile.FractionHundredths==expectation.Fraction && root.Flow.ContinueAvailable,"profile credit survives restart and fresh unfinished run remains continuable");
                     Submit("continue");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay,"fresh Continue");
                     Check(Solo.Life.RunXp==0 && Solo.Life[0].Current==100,"new run restored without old run XP");
                     Debug.Log("[CompletionValidation] RELOAD-PASS");Application.Quit(0);yield break;
@@ -80,7 +84,10 @@ namespace SpaceCrawler.Gameplay
             }
             Check(Physical.RunExitAnchor.gameObject.activeSelf,"final run exit visible");
             Check(Graph.Connections.Any(e=>e.From.Equals(Room)),"backtracking remains available before completion");
-            if(host){var life=cooperative?Net.Life:Solo.Life;Check(life.TryAwardRunXp(250),"explicit reward fixture");}
+            if(host && !Earned){var life=cooperative?Net.Life:Solo.Life;Check(life.TryAwardRunXp(250),"explicit reward fixture");}
+            if(Earned)yield return Until(()=>(cooperative?Net.RunXp:Solo.Life.RunXp)>0,"real kill XP earned across the run");
+            long expectedRunXp=Earned?(cooperative?Net.RunXp:Solo.Life.RunXp):250;
+            long expectedProfileXp=expectedRunXp*6/100;int expectedFraction=(int)(expectedRunXp*6%100);
             var anchor=(Vector2)Physical.RunExitAnchor.position;
             yield return Walk(anchor+(cooperative?(host?Vector2.left:Vector2.right)*.6f:Vector2.zero),false);
             if(cooperative)
@@ -98,9 +105,9 @@ namespace SpaceCrawler.Gameplay
             else {Interact(false);Interact(true);}
             yield return Until(()=>root.Flow.State==ApplicationState.Completed,"completion panel");
             var receipt=cooperative?Net.Outcome:Solo.Outcome;
-            Check(receipt.Reason==RunEndReason.Completed && receipt.RunXp==250,"one successful outcome");
-            Check(root.Profile.Experience==15 && root.LastRunReward.ProfileXp==15,"actual permanent profile credit");
-            Check(root.CurrentScreen.View.Q<Label>("completion-rewards").text.Contains("15"),"reward presentation");
+            Check(receipt.Reason==RunEndReason.Completed && receipt.RunXp==expectedRunXp,"one successful outcome");
+            Check(root.Profile.Experience==expectedProfileXp && root.LastRunReward.ProfileXp==expectedProfileXp && root.Profile.FractionHundredths==expectedFraction,"actual permanent profile credit");
+            Check(root.CurrentScreen.View.Q<Label>("completion-rewards").text.Contains(expectedProfileXp.ToString()),"reward presentation");
             Check(!root.Flow.ContinueAvailable,"completed run cannot Continue");
             if(cooperative)yield return Until(()=>Net.CanLeaveCompletion,"durable peer reward acknowledgment");
             var completedId=receipt.RunId;
@@ -108,9 +115,10 @@ namespace SpaceCrawler.Gameplay
             Submit("completion-return-to-menu");yield return Until(()=>root.Flow.State==ApplicationState.MainMenu,"return to menu");
             Check(!root.Flow.ContinueAvailable,"completed save stays invalid");
             cooperative=false;Submit("new-game");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay,"fresh run");
-            Check(Solo.Life.RunId!=completedId && Solo.Life.RunXp==0 && Solo.Life[0].Current==100 && root.Profile.Experience==15,"fresh run preserves only permanent XP");
+            Check(Solo.Life.RunId!=completedId && Solo.Life.RunXp==0 && Solo.Life[0].Current==100 && root.Profile.Experience==expectedProfileXp,"fresh run preserves only permanent XP");
             Submit("return-to-menu");yield return Until(()=>root.Flow.State==ApplicationState.MainMenu,"suspend fresh run");
             Check(root.Flow.ContinueAvailable,"fresh live run can Continue");
+            if(Earned)System.IO.File.WriteAllText(RewardExpectationPath,JsonUtility.ToJson(new RewardExpectation{Xp=expectedProfileXp,Fraction=expectedFraction}));
             Debug.Log("[CompletionValidation] COMPLETION-PASS");Application.Quit(0);
         }
     }

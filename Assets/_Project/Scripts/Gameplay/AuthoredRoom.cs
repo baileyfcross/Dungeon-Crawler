@@ -20,14 +20,20 @@ namespace SpaceCrawler.Gameplay
         [SerializeField] private EnemySpawn[] enemySpawns = Array.Empty<EnemySpawn>();
         [SerializeField] private EnemySpawn[] difficultySpawns = Array.Empty<EnemySpawn>();
         [SerializeField, Min(1)] private int baseEnemyCount = 3;
-        public IReadOnlyList<EnemySpawn> SelectEncounter(RunDifficulty difficulty, bool startingRoom, bool terminal, ulong seed)
+        [SerializeField] private DamageableTarget rangedEnemy;
+        [SerializeField] private RangedEnemyDefinition rangedBehaviour;
+        public IReadOnlyList<EnemySpawn> SelectEncounter(RunDifficulty difficulty, bool startingRoom, bool terminal, ulong seed,int encounterVersion=0)
         {
             if (startingRoom || terminal) return Array.Empty<EnemySpawn>();
             if (difficulty == RunDifficulty.Legacy) return enemySpawns;
             var slots = new List<EnemySpawn>(difficultySpawns);
             var random = new DeterministicRandom(seed);
             for (int i=slots.Count-1;i>0;i--) { int j=random.NextInt(i+1); var old=slots[i];slots[i]=slots[j];slots[j]=old; }
-            return slots.GetRange(0,DifficultyRules.EnemyCount(baseEnemyCount,slots.Count,difficulty,false));
+            var chosen=slots.GetRange(0,DifficultyRules.EnemyCount(baseEnemyCount,slots.Count,difficulty,false));
+            int ranged=EncounterComposition.RangedCount(seed,difficulty,chosen.Count,encounterVersion);
+            if(ranged>0 && (rangedEnemy==null || rangedBehaviour==null))throw new InvalidOperationException("Missing ranged encounter authoring.");
+            for(int i=0;i<ranged;i++)chosen[i]=chosen[i].AsRanged(rangedEnemy,rangedBehaviour);
+            return chosen;
         }
         [SerializeField] private Transform runExitAnchor;
         public Transform RunExitAnchor => runExitAnchor;

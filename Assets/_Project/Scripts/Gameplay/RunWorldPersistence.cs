@@ -17,7 +17,7 @@ namespace SpaceCrawler.Gameplay
         public string RecoveryMessage { get; private set; }
         public RunWorldPersistence(RunWorldSnapshot world)
         { if (world == null) return; restoredPlayers = world.Players; foreach (var room in world.Rooms) rooms[(room.Level,room.Room.Value)] = room; }
-        public void RestoreRoom(int level, RunRoomId id, AuthoredRoom room, Action changed)
+        public void RestoreRoom(int level, RunRoomId id, AuthoredRoom room, Action changed, Action<EnemyActor> killed = null)
         {
             if (rooms.TryGetValue((level,id.Value),out var saved))
             {
@@ -26,17 +26,18 @@ namespace SpaceCrawler.Gameplay
                 foreach (var state in saved.Enemies)
                 {
                     var actor = actors.SingleOrDefault(a => a.Identity.Spawn == state.Spawn);
-                    if (actor == null || actor.Target.InitialHealth != state.Maximum) throw new InvalidOperationException("Saved enemy slot no longer matches authoring.");
+                    if (actor == null || actor.Target.InitialHealth != state.Maximum || actor.Archetype != state.Archetype) throw new InvalidOperationException("Saved enemy slot no longer matches authoring.");
                     var position = new Vector2(state.Position.X,state.Position.Y)+(Vector2)room.transform.position;
-                    var value = new SavedEnemy(state.Spawn,state.Health,state.Maximum,ToCore(position),state.Facing);
+                    var value = new SavedEnemy(state.Spawn,state.Health,state.Maximum,ToCore(position),state.Facing,state.Archetype);
                     if (!room.IsSafePosition(position))
-                    { value = new SavedEnemy(state.Spawn,state.Health,state.Maximum,ToCore(actor.transform.position),state.Facing); Recovered(); }
+                    { value = new SavedEnemy(state.Spawn,state.Health,state.Maximum,ToCore(actor.transform.position),state.Facing,state.Archetype); Recovered(); }
                     actor.Restore(value);
                 }
             }
             foreach (var actor in room.Encounter.Enemies)
             {
                 var observed = actor.Target.Health.Current;
+                if(actor.Simulation!=null && killed!=null)actor.Simulation.Died+=()=>{if(!actor.IsRestoring)killed(actor);};
                 actor.Simulation.Changed += () =>
                 {
                     if (actor.Simulation.Lifecycle == EnemyLifecycle.Despawned || actor.Target.Health.Current == observed) return;
@@ -69,7 +70,7 @@ namespace SpaceCrawler.Gameplay
         {
             var offset=(Vector2)room.transform.position;
             var savedEnemies = room.Encounter.Enemies.Select(a => new SavedEnemy(a.Identity.Spawn,a.Target.Health.Current,a.Target.Health.Maximum,
-                ToCore((Vector2)a.transform.position-offset),new CoreVector(a.Facing.x,a.Facing.y))).ToArray();
+                ToCore((Vector2)a.transform.position-offset),new CoreVector(a.Facing.x,a.Facing.y),a.Archetype)).ToArray();
             rooms[(level,id.Value)] = new SavedRoomState(level,id,savedEnemies);
         }
         internal RunWorldSnapshot CapturePlayers(PlayerMotor[] motors,PlayerSimulation[] simulations,CombatResolver[] combat,AuthoredRoom[] playerRooms)

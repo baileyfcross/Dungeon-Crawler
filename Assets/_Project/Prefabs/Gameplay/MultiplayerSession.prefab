@@ -60,6 +60,7 @@ MonoBehaviour:
   useBlaster: 0
   useFixedSeed: 0
   fixedSeed: 42
+  rewardDefinition: {fileID: 11400000, guid: abafdbf76cc71d94087c150c37603cd8, type: 2}
 --- !u!114 &8816448127250083671
 MonoBehaviour:
   m_ObjectHideFlags: 0

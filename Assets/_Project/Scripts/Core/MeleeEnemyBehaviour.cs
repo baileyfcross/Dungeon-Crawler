@@ -6,7 +6,7 @@ namespace SpaceCrawler.Core
 {
     public enum EnemyBehaviourState { Idle, Pursue, Windup, Strike, Recovery, Return, Dead }
 
-    public sealed class MeleeEnemyConfiguration
+    public class EnemyCombatConfiguration
     {
         public float Speed { get; }
         public float Detection { get; }
@@ -15,7 +15,7 @@ namespace SpaceCrawler.Core
         public float Recovery { get; }
         public float LostTargetSeconds { get; }
         public int Damage { get; }
-        public MeleeEnemyConfiguration(float speed = 3, float detection = 7, float reach = 1.5f,
+        public EnemyCombatConfiguration(float speed = 3, float detection = 7, float reach = 1.5f,
             float windup = .6f, float recovery = .8f, float lostTargetSeconds = 3, int damage = 20)
         {
             foreach (var value in new[] { speed, detection, reach, windup, recovery, lostTargetSeconds })
@@ -24,6 +24,12 @@ namespace SpaceCrawler.Core
             Speed = speed; Detection = detection; Reach = reach; Windup = windup; Recovery = recovery;
             LostTargetSeconds = lostTargetSeconds; Damage = damage;
         }
+    }
+
+    public sealed class MeleeEnemyConfiguration : EnemyCombatConfiguration
+    {
+        public MeleeEnemyConfiguration(float speed=3,float detection=7,float reach=1.5f,float windup=.6f,float recovery=.8f,float lostTargetSeconds=3,int damage=20)
+            :base(speed,detection,reach,windup,recovery,lostTargetSeconds,damage) { }
     }
 
     public readonly struct EnemyObservation
@@ -42,7 +48,7 @@ namespace SpaceCrawler.Core
 
     /// <summary>Common lifecycle and target guards wrap the active combat states. Unity supplies
     /// observations and physics results; this authority emits movement and strike intentions.</summary>
-    public sealed class MeleeEnemyBehaviour
+    public sealed class MeleeEnemyBehaviour : IEnemyBehaviour
     {
         private readonly EnemySimulation enemy;
         private readonly MeleeEnemyConfiguration configuration;

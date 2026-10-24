@@ -8,14 +8,15 @@ namespace SpaceCrawler.Gameplay
 
     [Serializable] public sealed class RunSessionDescriptor
     {
-        public int protocol = 9, generationVersion, currentRoom, destination, state;
+        public int protocol = 11, generationVersion, currentRoom, destination, state;
         public string runId;
         public int level = 1, sequenceVersion;
         public bool levels;
         public string runSeed;
         public uint epoch;
         public string seed, fingerprint, weapon;
-        public int difficulty;
+        public int difficulty,encounterVersion,rewardVersion,rewardBaseXp;
+        public float[] rewardFactors;
         public int[] playerRooms, explored;
     }
     [Serializable] public sealed class RoomLoadAcknowledgment
@@ -57,7 +58,7 @@ namespace SpaceCrawler.Gameplay
     public struct EnemyStateSnapshot : INetworkSerializeByMemcpy
     {
         public uint Encounter, Revision;
-        public int Spawn, Current, Maximum, Lifecycle, Aggro;
+        public int Archetype, Spawn, Current, Maximum, Lifecycle, Aggro;
         public bool Restored;
         public Vector2 Position;
         public int Behaviour;
@@ -65,6 +66,8 @@ namespace SpaceCrawler.Gameplay
         public float WindupProgress;
         public long StrikeSequence;
     }
+    public struct EnemyProjectileSnapshot : INetworkSerializeByMemcpy
+    {public uint Encounter;public int Spawn;public long Sequence;public Vector2 Position,Direction;}
     public struct ProjectileStateSnapshot : INetworkSerializeByMemcpy
     { public int Owner; public long Sequence; public Vector2 Position; }
 }

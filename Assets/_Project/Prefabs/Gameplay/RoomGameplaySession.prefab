@@ -337,6 +337,7 @@ MonoBehaviour:
   rooms: {fileID: 5023946082873428610}
   useFixedSeed: 0
   fixedSeed: 42
+  rewardDefinition: {fileID: 11400000, guid: abafdbf76cc71d94087c150c37603cd8, type: 2}
 --- !u!114 &2382196992964349020
 MonoBehaviour:
   m_ObjectHideFlags: 0

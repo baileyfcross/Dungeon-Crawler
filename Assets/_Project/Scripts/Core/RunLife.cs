@@ -139,7 +139,7 @@ namespace SpaceCrawler.Core
             held[i] = false; progress[i] = 0;
         }
         public void CancelAllRevives() { for (var i = 0; i < Count; i++) CancelRevive(i, true); }
-        // No gameplay source calls this until XP earning rules are approved.
+        // Trusted gameplay systems award the shared run pool; profile conversion occurs only at run end.
         public bool TryAwardRunXp(long amount)
         {
             if (Ended || amount <= 0 || amount > long.MaxValue / 100 - RunXp) return false;

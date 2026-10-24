@@ -52,7 +52,7 @@ namespace SpaceCrawler.Tests.PlayMode
             var flow = new ApplicationFlow(); flow.TryRequest(ApplicationCommand.Initialize); flow.CompleteLoading(ApplicationState.MainMenu);
             flow.TryRequest(ApplicationCommand.NewGame); flow.CompleteLoading(ApplicationState.Gameplay); return flow;
         }
-        private IEnumerator StartPair(bool blaster = false, bool levels = false, int enemies = 0, bool melee = false, bool combatFixture = true, RunCheckpoint checkpoint = null, Action<RunEndReceipt> finishHost = null, Action<RunEndReceipt> finishClient = null, Func<Guid,System.Collections.Generic.IReadOnlyList<RunEndReceipt>> pending = null, Action<Guid,Guid> acknowledge = null, RunDifficulty difficulty = RunDifficulty.Legacy)
+        private IEnumerator StartPair(bool blaster = false, bool levels = false, int enemies = 0, bool melee = false, bool combatFixture = true, RunCheckpoint checkpoint = null, Action<RunEndReceipt> finishHost = null, Action<RunEndReceipt> finishClient = null, Func<Guid,System.Collections.Generic.IReadOnlyList<RunEndReceipt>> pending = null, Action<Guid,Guid> acknowledge = null, RunDifficulty difficulty = RunDifficulty.Legacy, bool earnXp = false)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<MultiplayerSession>("Assets/_Project/Prefabs/Gameplay/MultiplayerSession.prefab");
             host = Object.Instantiate(prefab); client = Object.Instantiate(prefab);
@@ -67,7 +67,7 @@ namespace SpaceCrawler.Tests.PlayMode
             }
             host.PollLocalDevices = false; client.PollLocalDevices = false;
             hostFlow = Playing(); clientFlow = Playing(); var endpoint = ++port;
-            host.Bind(SessionRole.Host, hostFlow, port: endpoint, hostSeed: 42, useLevelSequence: levels, checkpoint: checkpoint, save: value => latestCheckpoint = value, finish:finishHost, pendingRewards:pending, acknowledgeReward:acknowledge,difficulty:difficulty);
+            host.Bind(SessionRole.Host, hostFlow, port: endpoint, hostSeed: 42, useLevelSequence: levels, checkpoint: checkpoint, save: value => latestCheckpoint = value, finish:finishHost, pendingRewards:pending, acknowledgeReward:acknowledge,difficulty:difficulty,enableKillRewards:earnXp);
             if (melee) host.Rooms.CurrentRoom.Encounter.Enemies[0].ConfigureMelee(
                 AssetDatabase.LoadAssetAtPath<MeleeEnemyDefinition>("Assets/_Project/Data/Enemies/MeleeEnemy.asset"));
             // A competing seed argument is deliberately ignored for the client role.
@@ -118,6 +118,25 @@ namespace SpaceCrawler.Tests.PlayMode
             => Assert.That(endpoint.LocalCommands.Attack(new AttackIntent(new PlayerIdentity(endpoint.LocalPlayer), endpoint.LocalCommands.State.AimDirection)), Is.True);
 
         [UnityTest]
+        public IEnumerator HostKillRewardsReplicateAcrossRoomsAndReplicaDeathCannotAwardAgain()
+        {
+            yield return StartPair(levels:true,combatFixture:false,difficulty:RunDifficulty.Normal,earnXp:true);
+            Assert.That(client.RewardPolicy,Is.EqualTo(host.RewardPolicy));
+            var edge=host.Progression.Choices.First(e=>!host.Run.GetRoom(e.To).IsTerminal);host.Players[0].Motor.PlaceAt(host.Rooms.CurrentRoom.ExitFor(edge,host.Progression.Choices).transform.position);
+            yield return WaitFor(()=>host.RoomReady && client.RoomReady && host.PlayerRoom(0).Equals(edge.To) && client.PlayerRoom(0).Equals(edge.To),"reward encounter replicated");
+            var actor=host.Rooms.CurrentRoom.Encounter.Enemies.First();int spawn=actor.Identity.Spawn;
+            long expected=host.RewardPolicy.KillXp(1,actor.Archetype,host.Difficulty);
+            host.DamagePlayer(new PlayerIdentity(2),Guid.NewGuid(),100);
+            actor.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1),7901,actor.Target.Identity,999),out _);
+            yield return WaitFor(()=>client.RunXp==expected,"shared kill XP replicated to a downed player in another room");
+            Assert.That(host.RunXp,Is.EqualTo(expected));Assert.That(latestCheckpoint.Life.RunXp,Is.EqualTo(expected));
+            var replica=client.PlayerRoomLoader(0).CurrentRoom.Encounter.Enemies.Single(a=>a.Identity.Spawn==spawn);
+            Assert.That(replica.Simulation,Is.Null);Assert.That(replica.Lifecycle,Is.EqualTo(EnemyLifecycle.Dead));
+            Assert.That(replica.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(2),7902,replica.Target.Identity,999),out _),Is.False);
+            Assert.That(host.RunXp,Is.EqualTo(expected));Assert.That(client.RunXp,Is.EqualTo(expected));
+        }
+
+        [UnityTest]
         public IEnumerator SplitRoomsShareExplorationAndRestoreEachPlayersRoomWithoutRespawningEnemies()
         {
             yield return StartPair(levels:true,combatFixture:false,difficulty:RunDifficulty.Hard);
@@ -131,7 +150,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Map.Rooms.Count,Is.EqualTo(2));Assert.That(client.Map.Rooms.Select(n=>n.Id),Is.EquivalentTo(host.Map.Rooms.Select(n=>n.Id)));
             Assert.That(client.Map.PlayerRooms[0],Is.Not.EqualTo(client.Map.PlayerRooms[1]));
             Assert.That(host.Rooms.CurrentRoom.Encounter.Enemies.Count,Is.EqualTo(5));
-            var enemy=host.Rooms.CurrentRoom.Encounter.Enemies[0];
+            var enemy=host.Rooms.CurrentRoom.Encounter.Enemies.First(e=>e.Archetype==EnemyArchetype.Melee);
             var defeatedSpawn=enemy.Identity.Spawn;
             Assert.That(enemy.Target.Health.Maximum,Is.EqualTo(150));Assert.That(enemy.Configuration.Damage,Is.EqualTo(30));
             enemy.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1),991,enemy.Target.Identity,150),out _);
@@ -272,6 +291,11 @@ namespace SpaceCrawler.Tests.PlayMode
             host.Network.ConnectionApprovalCallback(request, oldProtocol);
             Assert.That(oldProtocol.Approved, Is.False);
             request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession9");
+            var priorBuild=new NetworkManager.ConnectionApprovalResponse();host.Network.ConnectionApprovalCallback(request,priorBuild);
+            Assert.That(priorBuild.Approved,Is.False);
+            request.Payload=System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession10");
+            var oldRewards=new NetworkManager.ConnectionApprovalResponse();host.Network.ConnectionApprovalCallback(request,oldRewards);Assert.That(oldRewards.Approved,Is.False);
+            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession11");
             var accepted = new NetworkManager.ConnectionApprovalResponse();
             host.Network.ConnectionApprovalCallback(request, accepted);
             Assert.That(accepted.Approved, Is.True);
@@ -353,9 +377,9 @@ namespace SpaceCrawler.Tests.PlayMode
                 {
                     Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
                     var rejected = host.Authority.RejectedStale;
-                    SendClient("session.input.v9", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
+                    SendClient("session.input.v11", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
                         Sequence = 9999, AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.up });
-                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v9", JsonUtility.ToJson(
+                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v11", JsonUtility.ToJson(
                         new RoomLoadAcknowledgment { epoch = lastEpoch, level = level, room = 0, fingerprint = host.Fingerprint }));
                     yield return WaitFor(() => host.Authority.RejectedStale > rejected, "prior-level input rejected");
                     Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1), "Old-level acknowledgment cannot commit entry again.");
@@ -403,7 +427,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero)); Assert.That(client.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero));
 
             var before = host.Authority.RejectedOwnership;
-            SendClient("session.input.v9", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
+            SendClient("session.input.v11", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
                 AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.left });
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Authority.RejectedOwnership, Is.EqualTo(before + 1));
@@ -521,11 +545,11 @@ namespace SpaceCrawler.Tests.PlayMode
         {
             yield return StartPair(); var initial = host.CurrentRoom;
             var forged = new RunSessionDescriptor { runId = host.Life.RunId.ToString("N"), epoch = host.Epoch + 1, seed = "999", fingerprint = "forged", destination = 10, generationVersion = 1, weapon = "weapon.knife" };
-            SendJson(client.Network, host.Network.LocalClientId, "session.run.v9", JsonUtility.ToJson(forged));
+            SendJson(client.Network, host.Network.LocalClientId, "session.run.v11", JsonUtility.ToJson(forged));
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Run.Seed, Is.EqualTo(42)); Assert.That(host.CurrentRoom, Is.EqualTo(initial)); Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
             // Fault injection from the real server transport, deliberately corrupting graph agreement.
-            SendJson(host.Network, client.Network.LocalClientId, "session.run.v9", JsonUtility.ToJson(forged));
+            SendJson(host.Network, client.Network.LocalClientId, "session.run.v11", JsonUtility.ToJson(forged));
             yield return WaitFor(() => client.Failure != null, "mismatching descriptor rejection");
             Assert.That(client.Failure, Does.Contain("mismatch")); Assert.That(client.Run.Seed, Is.EqualTo(42));
         }
@@ -658,7 +682,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(hostStore.Profile.Experience,Is.EqualTo(15));Assert.That(clientStore.Profile.Experience,Is.EqualTo(15));
             Assert.That(host.Outcome.Reason,Is.EqualTo(RunEndReason.Completed));Assert.That(client.Vitals(1).State,Is.EqualTo(PlayerLifeState.Alive));
             var receipt=host.Outcome;
-            SendJson(host.Network,client.Network.LocalClientId,"session.end.v9",JsonUtility.ToJson(new RunEndMessage {runId=receipt.RunId.ToString("N"),xp=receipt.RunXp,reason=(int)receipt.Reason,percent=receipt.Percent,profiles=receipt.Profiles.Select(id=>id.ToString("N")).ToArray()}));
+            SendJson(host.Network,client.Network.LocalClientId,"session.end.v11",JsonUtility.ToJson(new RunEndMessage {runId=receipt.RunId.ToString("N"),xp=receipt.RunXp,reason=(int)receipt.Reason,percent=receipt.Percent,profiles=receipt.Profiles.Select(id=>id.ToString("N")).ToArray()}));
             yield return Frames(5);Assert.That(clientStore.Profile.Experience,Is.EqualTo(15));Assert.That(host.Life.TryComplete(),Is.False);
             client.Stop();yield return Frames(5);Assert.That(hostFlow.State,Is.EqualTo(ApplicationState.Completed),"completion panel survives peer departure");
         }
