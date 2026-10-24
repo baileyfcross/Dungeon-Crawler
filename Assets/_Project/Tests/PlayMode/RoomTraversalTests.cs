@@ -212,31 +212,79 @@ namespace SpaceCrawler.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator PausedExitAndFocusLossDoNotCommitAndHeldMovementRequiresNeutralAfterTransition()
+        public IEnumerator PausedExitAndFocusLossDoNotCommitAndHeldMovementContinuesAfterTransition()
         {
             yield return StartSession(42);
             var origin = Rooms.Progression.CurrentRoomId; var exit = Rooms.CurrentRoom.LeftExit;
             flow.TryRequest(ApplicationCommand.Pause);
             session.Motor.PlaceAt(exit.transform.position);
-            yield return new WaitForFixedUpdate(); yield return Frames(3);
+            yield return new WaitForFixedUpdate(); yield return Frames(3);yield return new WaitForFixedUpdate();
             Assert.That(Rooms.Progression.CurrentRoomId, Is.EqualTo(origin));
             session.Input.HandleFocus(false); session.Input.HandleFocus(true);
             Assert.That(flow.State, Is.EqualTo(ApplicationState.Paused));
             Assert.That(Rooms.Progression.CurrentRoomId, Is.EqualTo(origin));
             session.Motor.PlaceAt(Vector2.zero);
-            flow.TryRequest(ApplicationCommand.Resume); yield return Frames(4);
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W)); yield return Frames(3);
+            flow.TryRequest(ApplicationCommand.Resume); yield return Frames(4);yield return new WaitForFixedUpdate();
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.W)); yield return Frames(3);yield return new WaitForFixedUpdate();
             session.Motor.PlaceAt(exit.transform.position);
             yield return WaitFor(() => !Rooms.Progression.CurrentRoomId.Equals(origin));
-            yield return Frames(3);
-            Assert.That(session.Input.MovementNeedsNeutral, Is.True);
-            Assert.That(session.Motor.Body.linearVelocity, Is.EqualTo(Vector2.zero));
-            Assert.That(session.Motor.Body.position, Is.EqualTo((Vector2)Rooms.CurrentRoom.PlayerSpawnAnchor.position));
-            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); yield return Frames(3);
+            yield return Frames(3);yield return new WaitForFixedUpdate();
+            Assert.That(session.Input.MovementNeedsNeutral, Is.False);
+            Assert.That(session.Motor.Body.linearVelocity.y, Is.EqualTo(5).Within(0.01f));
+            InputSystem.QueueStateEvent(keyboard, new KeyboardState()); yield return Frames(3);yield return new WaitForFixedUpdate();
             InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.D)); yield return new WaitForSeconds(0.1f);
             Assert.That(session.Motor.Body.linearVelocity.x, Is.EqualTo(5).Within(0.01f));
             session.Input.HandleFocus(false); yield return new WaitForFixedUpdate();
             Assert.That(flow.State, Is.EqualTo(ApplicationState.Paused)); Assert.That(session.Motor.Body.linearVelocity, Is.EqualTo(Vector2.zero));
+        }
+
+        [UnityTest]
+        public IEnumerator HeldDiagonalMovementAndSprintSurviveRepeatedRoomGatesButReleaseDuringLoadingStops()
+        {
+            yield return StartSession(42);
+            InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.W,Key.D,Key.LeftShift));yield return Frames(4);yield return new WaitForFixedUpdate();
+            Assert.That(session.Motor.Body.linearVelocity.magnitude,Is.EqualTo(7.5f).Within(.02f));
+            session.Input.SetRoomAvailable(false);session.Input.SetRoomAvailable(false);
+            yield return Frames(2);yield return new WaitForFixedUpdate();Assert.That(session.Motor.Body.linearVelocity,Is.EqualTo(Vector2.zero));
+            session.Input.SetRoomAvailable(true);yield return Frames(4);yield return new WaitForFixedUpdate();
+            Assert.That(session.Motor.Body.linearVelocity.x,Is.GreaterThan(5));Assert.That(session.Motor.Body.linearVelocity.y,Is.GreaterThan(5));
+            Assert.That(session.Motor.Body.linearVelocity.magnitude,Is.EqualTo(7.5f).Within(.02f));
+            session.Input.SetRoomAvailable(false);InputSystem.QueueStateEvent(keyboard,new KeyboardState());yield return Frames(3);yield return new WaitForFixedUpdate();
+            session.Input.SetRoomAvailable(true);yield return Frames(4);yield return new WaitForFixedUpdate();
+            Assert.That(session.Motor.Body.linearVelocity,Is.EqualTo(Vector2.zero));
+        }
+
+        [UnityTest]
+        public IEnumerator PauseFocusAndAccountChangesDuringLoadingStillRequireMovementRelease()
+        {
+            yield return StartSession(42);
+            for(int interruption=0;interruption<3;interruption++)
+            {
+                InputSystem.QueueStateEvent(keyboard,new KeyboardState());yield return Frames(3);yield return new WaitForFixedUpdate();
+                InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.W));yield return Frames(3);yield return new WaitForFixedUpdate();
+                Assert.That(session.Motor.Body.linearVelocity.y,Is.EqualTo(5).Within(.02f));
+                session.Input.SetRoomAvailable(false);
+                if(interruption==0){flow.TryRequest(ApplicationCommand.Pause);flow.TryRequest(ApplicationCommand.Resume);}
+                if(interruption==1){session.Input.HandleFocus(false);session.Input.HandleFocus(true);flow.TryRequest(ApplicationCommand.Resume);}
+                if(interruption==2){session.Input.SetAccountAvailable(false);session.Input.SetAccountAvailable(true);}
+                session.Input.SetRoomAvailable(true);yield return Frames(4);yield return new WaitForFixedUpdate();
+                Assert.That(session.Input.MovementNeedsNeutral,Is.True);Assert.That(session.Motor.Body.linearVelocity,Is.EqualTo(Vector2.zero));
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator GamepadHeldMovementSurvivesRoomGate()
+        {
+            var pad=InputSystem.AddDevice<Gamepad>();
+            try
+            {
+                yield return StartSession(42);
+                InputSystem.QueueStateEvent(pad,new GamepadState{leftStick=Vector2.up});yield return Frames(4);yield return new WaitForFixedUpdate();
+                Assert.That(session.Motor.Body.linearVelocity.y,Is.EqualTo(5).Within(.02f));
+                session.Input.SetRoomAvailable(false);session.Input.SetRoomAvailable(true);yield return Frames(4);yield return new WaitForFixedUpdate();
+                Assert.That(session.Motor.Body.linearVelocity.y,Is.EqualTo(5).Within(.02f));
+            }
+            finally{InputSystem.RemoveDevice(pad);}
         }
 
         [UnityTest]

@@ -11,6 +11,8 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using Object = UnityEngine.Object;
 using CoreVector = System.Numerics.Vector2;
 
@@ -25,6 +27,8 @@ namespace SpaceCrawler.Tests.PlayMode
         private ApplicationFlow hostFlow, clientFlow;
         private bool previousBackground;
         private RunCheckpoint latestCheckpoint;
+        private Keyboard movementKeyboard;
+        private InputSettings.EditorInputBehaviorInPlayMode movementInputBehaviour;
         private static ushort port = 17900;
 
         [UnitySetUp]
@@ -36,6 +40,12 @@ namespace SpaceCrawler.Tests.PlayMode
         [UnityTearDown]
         public IEnumerator TearDown()
         {
+            if(movementKeyboard!=null)
+            {
+                if(movementKeyboard.added)InputSystem.RemoveDevice(movementKeyboard);
+                InputSystem.settings.editorInputBehaviorInPlayMode=movementInputBehaviour;
+                movementKeyboard=null;
+            }
             if (transportScreen != null) Object.Destroy(transportScreen.gameObject);
             if (client != null) client.Stop();
             if (refused != null) refused.Stop();
@@ -236,6 +246,40 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Players[0].Combat.Projectiles.Count,Is.EqualTo(1),"A teammate travelling must not cancel this player's live shot.");
             yield return WaitFor(()=>host.Players[0].Simulation.DesiredVelocity.Length()>7.4f,"held movement survives a remote room transition");
             Move(host,CoreVector.Zero);
+        }
+
+        [UnityTest]
+        public IEnumerator HostAndClientHeldKeysContinueThroughTheirOwnRoomTransitions()
+        {
+            var previous=InputSystem.settings.editorInputBehaviorInPlayMode;
+            var keyboard=InputSystem.AddDevice<Keyboard>();
+            movementKeyboard=keyboard;movementInputBehaviour=previous;
+            InputSystem.settings.editorInputBehaviorInPlayMode=InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+            try
+            {
+                yield return StartPair(levels:true,combatFixture:false);
+                for(int slot=0;slot<2;slot++)
+                {
+                    var peer=slot==0?host:client;peer.PollLocalDevices=true;
+                    peer.Players[slot].Input.HandleFocus(true);
+                    InputSystem.QueueStateEvent(keyboard,new KeyboardState());yield return Frames(5);
+                    InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.W,Key.LeftShift));
+                    yield return WaitFor(()=>host.Players[slot].Simulation.DesiredVelocity.Y>7.4f,"held keys reach authority");
+                    var source=host.PlayerRoom(slot);
+                    var edge=host.Run.Connections.First(e=>e.From.Equals(source) && !host.Run.GetRoom(e.To).IsTerminal);
+                    var room=host.PlayerRoomLoader(slot).CurrentRoom;
+                    host.Players[slot].Motor.PlaceAt(room.ExitFor(edge,host.Progression.ConnectionsFrom(source)).transform.position);
+                    yield return WaitFor(()=>host.RoomReady && client.RoomReady && host.PlayerRoom(slot).Equals(edge.To) && client.PlayerRoom(slot).Equals(edge.To),"own room transition acknowledged");
+                    TestContext.WriteLine($"slot={slot} neutral={peer.Players[slot].Input.MovementNeedsNeutral} active={peer.Players[slot].Input.GameplayInputEnabled} desired={host.Players[slot].Simulation.DesiredVelocity} W={keyboard.wKey.isPressed} Shift={keyboard.leftShiftKey.isPressed}");
+                    yield return WaitFor(()=>host.Players[slot].Simulation.DesiredVelocity.Y>7.4f,"held movement resumes after own room transition");
+                    Assert.That(peer.Players[slot].Input.MovementNeedsNeutral,Is.False);
+                    InputSystem.QueueStateEvent(keyboard,new KeyboardState());
+                    yield return WaitFor(()=>host.Players[slot].Simulation.DesiredVelocity.LengthSquared()<.001f,"release stops authority movement");
+                    peer.PollLocalDevices=false;
+                }
+            }
+            finally
+            {InputSystem.settings.editorInputBehaviorInPlayMode=previous;InputSystem.RemoveDevice(keyboard);}
         }
 
         [UnityTest]

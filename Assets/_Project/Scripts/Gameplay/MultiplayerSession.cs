@@ -194,7 +194,7 @@ namespace SpaceCrawler.Gameplay
             var validation = SessionDiagnostics.Option("--session-validation");
             if (validation == "run" || validation == "checkpoint" || validation == "resume" || validation == "enemies"
                 || validation == "traversal" || validation == "traversal-resume" || validation == "health" || validation == "health-checkpoint" || validation == "health-resume" || validation == "melee" || validation=="audio"
-                || validation=="exploration" || validation=="exploration-resume" || validation=="ranged" || validation=="ranged-resume" || validation=="rewards" || validation=="rewards-resume") gameObject.AddComponent<SessionValidationDriver>().Bind(this, flow);
+                || validation=="room-movement" || validation=="exploration" || validation=="exploration-resume" || validation=="ranged" || validation=="ranged-resume" || validation=="rewards" || validation=="rewards-resume") gameObject.AddComponent<SessionValidationDriver>().Bind(this, flow);
 #endif
         }
 

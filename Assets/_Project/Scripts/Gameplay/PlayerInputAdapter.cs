@@ -26,6 +26,7 @@ namespace SpaceCrawler.Gameplay
         public void SetPauseInterceptor(Func<bool> interceptor)=>pauseInterceptor=interceptor;
         private bool attackNeedsRelease;
         private bool roomAvailable = true;
+        private bool continueRoomMovement, continueRoomSprint;
         public bool GameplayInputEnabled => commands != null && commands.InputActive;
         public bool MovementNeedsNeutral => movementNeedsNeutral;
         public string AimSource => useStick ? "Right stick" : "Absolute pointer";
@@ -53,6 +54,8 @@ namespace SpaceCrawler.Gameplay
 
         private void ApplyGate(ApplicationState state)
         {
+            if (!accountAvailable || !focused || state != ApplicationState.Gameplay || flow.RunEndPending)
+                continueRoomMovement = continueRoomSprint = false;
             var active = accountAvailable && focused && roomAvailable && state == ApplicationState.Gameplay && !flow.RunEndPending;
             commands.SetInputActive(active);
             if (active)
@@ -74,7 +77,14 @@ namespace SpaceCrawler.Gameplay
                     if (control.device is Gamepad && control is Vector2Control rightStick) stick = rightStick;
                 }
             }
-            else { move.Disable(); aim.Disable(); attack.Disable(); interact.Disable(); sprint.Disable(); }
+            else
+            {
+                // Keep live movement controls sampled during an ordinary room load, but submit no commands.
+                // Pause, focus/account loss and run end clear continuity above and disable these too.
+                if (!continueRoomMovement) move.Disable();
+                if (!continueRoomSprint) sprint.Disable();
+                aim.Disable(); attack.Disable(); interact.Disable();
+            }
             if (focused && (state == ApplicationState.Gameplay || state == ApplicationState.Paused)) pause.Enable();
             else pause.Disable();
         }
@@ -146,8 +156,24 @@ namespace SpaceCrawler.Gameplay
         { accountAvailable=available;if(flow!=null)ApplyGate(flow.State); }
         public void SetRoomAvailable(bool available)
         {
+            if (available == roomAvailable) return;
+            if (!available)
+            {
+                continueRoomMovement = GameplayInputEnabled && !movementNeedsNeutral;
+                continueRoomSprint = continueRoomMovement && !sprintNeedsRelease;
+            }
             roomAvailable = available;
             if (flow != null) ApplyGate(flow.State);
+            if (available)
+            {
+                // Read the current device state after entry; never replay a cached movement vector.
+                if (GameplayInputEnabled && continueRoomMovement)
+                {
+                    movementNeedsNeutral = false;
+                    sprintNeedsRelease = !continueRoomSprint;
+                }
+                continueRoomMovement = continueRoomSprint = false;
+            }
         }
 
         // Called after SampleAim: the command carries accepted gameplay aim, never raw device aim.

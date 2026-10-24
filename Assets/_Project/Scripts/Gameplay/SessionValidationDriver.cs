@@ -86,9 +86,48 @@ namespace SpaceCrawler.Gameplay
             if (!Host && !observedReplicaShot && session.ReplicaProjectileCount > 0)
             { observedReplicaShot = true; Record("client-projectile-presentation-only"); }
         }
+        private IEnumerator RunRoomMovement()
+        {
+            var keyboard=UnityEngine.InputSystem.InputSystem.AddDevice<UnityEngine.InputSystem.Keyboard>();
+            try
+            {
+                Local.Input.HandleFocus(true);flow.TryRequest(ApplicationCommand.Resume);session.PollLocalDevices=true;
+                UnityEngine.InputSystem.InputSystem.QueueStateEvent(keyboard,new UnityEngine.InputSystem.LowLevel.KeyboardState());
+                yield return new WaitForSeconds(.25f);
+                for(int slot=0;slot<2;slot++)
+                {
+                    var source=session.Run.StartRoomId;
+                    if(session.LocalPlayer-1==slot)
+                        UnityEngine.InputSystem.InputSystem.QueueStateEvent(keyboard,new UnityEngine.InputSystem.LowLevel.KeyboardState(UnityEngine.InputSystem.Key.W,UnityEngine.InputSystem.Key.LeftShift));
+                    yield return Until(()=>session.Players[slot].State.Velocity.Y>7.4f,"held sprint reaches authority and replica");
+                    yield return new WaitForSeconds(.3f); // Keep the pre-entry sample visible across snapshot delivery.
+                    if(Host)
+                    {
+                        var edge=session.Run.Connections.First(e=>e.From.Equals(source) && !session.Run.GetRoom(e.To).IsTerminal);
+                        var room=session.PlayerRoomLoader(slot).CurrentRoom;
+                        session.Players[slot].Motor.PlaceAt(room.ExitFor(edge,session.Run.Connections.Where(e=>e.From.Equals(source)).ToArray()).transform.position);
+                    }
+                    yield return Until(()=>session.RoomReady && !session.PlayerRoom(slot).Equals(source),"own room transition");
+                    // A held direction can face a wall after an authored doorway; verify the accepted command,
+                    // rather than requiring collision-resolved velocity to equal the requested speed.
+                    if(Host)yield return Until(()=>session.Players[slot].Simulation.DesiredVelocity.Y>7.4f,"held movement resumes after room entry");
+                    yield return new WaitForSeconds(.3f); // Allow both standalone peers to observe the resumed movement.
+                    if(session.LocalPlayer-1==slot)
+                    {
+                        Check(!Local.Input.MovementNeedsNeutral,"room entry does not require key release");
+                        UnityEngine.InputSystem.InputSystem.QueueStateEvent(keyboard,new UnityEngine.InputSystem.LowLevel.KeyboardState());
+                    }
+                    yield return Until(()=>session.Players[slot].State.Velocity.LengthSquared()<.001f,"released movement stops on both peers");
+                    Record("ROOM-MOVEMENT-PLAYER-"+(slot+1)+"-PASS");
+                }
+                Record("ROOM-MOVEMENT-PASS");if(!Host){yield return new WaitForSeconds(1);Application.Quit(0);}
+            }
+            finally{session.PollLocalDevices=false;UnityEngine.InputSystem.InputSystem.RemoveDevice(keyboard);}
+        }
         private IEnumerator Run()
         {
             yield return Until(() => session.RoomReady, "initial room handshake");
+            if(SessionDiagnostics.Option("--session-validation")=="room-movement"){yield return RunRoomMovement();yield break;}
             string expectedClass=SessionDiagnostics.Option("--expected-class");
             if(expectedClass!=null)
             {
