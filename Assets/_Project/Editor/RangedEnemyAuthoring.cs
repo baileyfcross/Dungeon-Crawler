@@ -22,7 +22,10 @@ namespace SpaceCrawler.Editor
                 {
                     root.name="RangedEnemy";
                     var data=new SerializedObject(root.GetComponent<DamageableTarget>());data.FindProperty("initialHealth").intValue=80;data.ApplyModifiedPropertiesWithoutUndo();
-                    foreach(var sprite in root.GetComponentsInChildren<SpriteRenderer>())sprite.color=new Color(.65f,.25f,.85f);
+                    // Tint the body only; health fill and background must remain distinct.
+                    var presentation=new SerializedObject(root.GetComponentInChildren<TargetPresentation>());
+                    var body=(SpriteRenderer)presentation.FindProperty("targetSprite").objectReferenceValue;
+                    body.color=new Color(.65f,.25f,.85f);
                     PrefabUtility.SaveAsPrefabAsset(root,PrefabPath);
                 }
                 finally{UnityEngine.Object.DestroyImmediate(root);}

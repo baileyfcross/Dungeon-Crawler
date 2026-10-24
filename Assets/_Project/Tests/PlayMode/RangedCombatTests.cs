@@ -29,6 +29,37 @@ namespace SpaceCrawler.Tests.PlayMode
         }
         [UnityTearDown]public IEnumerator TearDown(){system?.Dispose();if(room!=null)Object.Destroy(room.gameObject);yield return null;}
         private void Tick(int count,bool running=true){for(int i=0;i<count;i++)system.Advance(room,running,.02f);}
+        private static Transform HealthFill(DamageableTarget target)
+        {
+            var data=new SerializedObject(target.GetComponentInChildren<TargetPresentation>());
+            return (Transform)data.FindProperty("healthFill").objectReferenceValue;
+        }
+        [UnityTest]public IEnumerator HealthBarHasContrastingBackgroundAndTracksAuthoritativeDamage()
+        {
+            var fill=HealthFill(Enemy.Target);
+            var background=Enemy.Target.GetComponentsInChildren<SpriteRenderer>().Single(s=>s.name=="Health background");
+            Assert.That(fill.GetComponent<SpriteRenderer>().color,Is.Not.EqualTo(background.color),"A matching background hides the shrinking health fill.");
+            float width=fill.localScale.x;
+            Assert.That(Enemy.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1),1,Enemy.Target.Identity,20),out _),Is.True);
+            Assert.That(fill.localScale.x,Is.EqualTo(width*.75f).Within(.0001f));
+            Assert.That(Enemy.Target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1),2,Enemy.Target.Identity,60),out _),Is.True);
+            Assert.That(fill.localScale.x,Is.Zero);yield return null;
+        }
+        [UnityTest]public IEnumerator HealthBarTracksReplicatedAndRestoredPartialHealth()
+        {
+            var replica=Object.Instantiate(AssetDatabase.LoadAssetAtPath<DamageableTarget>("Assets/_Project/Prefabs/Combat/RangedEnemy.prefab"),room.ContentRoot);
+            var fill=HealthFill(replica);float width=fill.localScale.x;
+            replica.PresentAuthoritativeHealth(80,80);
+            replica.PresentAuthoritativeHealth(60,80);
+            Assert.That(fill.localScale.x,Is.EqualTo(width*.75f).Within(.0001f));
+            replica.PresentAuthoritativeHealth(20,80);
+            Assert.That(fill.localScale.x,Is.EqualTo(width*.25f).Within(.0001f));
+            replica.PresentAuthoritativeHealth(0,80);Assert.That(fill.localScale.x,Is.Zero);
+            var restoredFill=HealthFill(Enemy.Target);float restoredWidth=restoredFill.localScale.x;
+            Enemy.Restore(new SavedEnemy(1,40,80,new System.Numerics.Vector2(0,6),System.Numerics.Vector2.UnitY,EnemyArchetype.Ranged));
+            Assert.That(restoredFill.localScale.x,Is.EqualTo(restoredWidth*.5f).Within(.0001f));
+            Assert.That(replica.Health,Is.Null,"Health presentation must not create client authority.");yield return null;
+        }
         [UnityTest]public IEnumerator ShotHasTravelTimeDamagesOnceAndNeverTargetsAnotherRoom()
         {
             Assert.That(Enemy.Target.Health.Maximum,Is.EqualTo(80));Assert.That(Enemy.Configuration.Damage,Is.EqualTo(10));
