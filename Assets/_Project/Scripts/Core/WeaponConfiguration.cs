@@ -37,7 +37,7 @@ namespace SpaceCrawler.Core
 
         public WeaponConfiguration WithDamageBonus(int percent)
         {
-            if(percent<0 || percent>30)throw new ArgumentOutOfRangeException(nameof(percent));
+            if(percent<0 || percent>40)throw new ArgumentOutOfRangeException(nameof(percent));
             int damage=checked((int)(((long)Damage*(100+percent)+50)/100));
             return new WeaponConfiguration(Id,Kind,damage,Cooldown,MeleeRange,MeleeArcDegrees,ProjectileSpeed,ProjectileLifetime);
         }

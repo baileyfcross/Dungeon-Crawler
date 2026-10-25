@@ -16,9 +16,9 @@ namespace SpaceCrawler.Gameplay
     /// <summary>Two-player session adapter: sender-authenticated requests in, authoritative state out.</summary>
     public sealed partial class MultiplayerSession : MonoBehaviour
     {
-        private const string InputMessage = "session.input.v13", DescriptorMessage = "session.run.v13",
-            AckMessage = "session.room-ready.v13", StateMessage = "session.state.v13",
-            EndMessage = "session.end.v13", RewardAckMessage = "session.reward-ready.v13";
+        private const string InputMessage = "session.input.v14", DescriptorMessage = "session.run.v14",
+            AckMessage = "session.room-ready.v14", StateMessage = "session.state.v14",
+            EndMessage = "session.end.v14", RewardAckMessage = "session.reward-ready.v14";
         [SerializeField] private NetworkManager network;
         [SerializeField] private UnityTransport transport;
         [SerializeField] private NetworkPlayerRig playerPrefab;
@@ -96,6 +96,7 @@ namespace SpaceCrawler.Gameplay
         // Integration tests may supply intentions at the same boundary instead of polling devices.
         public bool PollLocalDevices { get; set; } = true;
         public string Failure { get; private set; }
+        public WeaponConfiguration BaseWeapon => weapon;
         public string WeaponName => weapon?.Id ?? "Waiting";
         public string WeaponDisplayName => weapon == null ? "Waiting" : ResolveWeapon(weapon.Id).DisplayName;
         public event Action Changed;
@@ -149,7 +150,7 @@ namespace SpaceCrawler.Gameplay
             network.NetworkConfig.AutoSpawnPlayerPrefabClientSide = false;
             network.NetworkConfig.PlayerPrefab = null;
             network.NetworkConfig.TickRate = 30;
-            network.NetworkConfig.ConnectionData = steam==null ? Encoding.ASCII.GetBytes("SpaceCrawlerSession13") : steam.Payload(this.profileId);
+            network.NetworkConfig.ConnectionData = steam==null ? Encoding.ASCII.GetBytes("SpaceCrawlerSession14") : steam.Payload(this.profileId);
             network.ConnectionApprovalCallback = Approve;
             network.OnClientConnectedCallback += Connected;
             network.OnClientDisconnectCallback += Disconnected;
@@ -252,7 +253,7 @@ namespace SpaceCrawler.Gameplay
         {
             string reason="The session requires one host and one client with the same protocol.";
             bool capacity=request.ClientNetworkId==NetworkManager.ServerClientId || network.ConnectedClientsIds.Count<2;
-            bool valid=steam==null ? Encoding.ASCII.GetString(request.Payload)=="SpaceCrawlerSession13"
+            bool valid=steam==null ? Encoding.ASCII.GetString(request.Payload)=="SpaceCrawlerSession14"
                 : request.ClientNetworkId==NetworkManager.ServerClientId || steam.Approve(network.GetTransportIdFromClientId(request.ClientNetworkId),request.Payload,out reason);
             response.Approved=capacity && valid;
             response.CreatePlayerObject=false;response.Pending=false;
@@ -364,7 +365,7 @@ namespace SpaceCrawler.Gameplay
             {
                 reader.ReadValueSafe(out string json);
                 var incoming = JsonUtility.FromJson<RunSessionDescriptor>(json);
-                if (incoming.protocol != 13 || incoming.epoch <= epoch) return;
+                if (incoming.protocol != 14 || incoming.epoch <= epoch) return;
                 if(incoming.classes==null || incoming.classes.Length!=2)throw new InvalidOperationException("Missing player classes.");
                 if(Run==null && incoming.classesLocked) selectedClass=incoming.classes[1] ?? string.Empty;
                 else if(Run==null && incoming.classes[0].Length>0 && !PlayerClasses.Contains(selectedClass))throw new InvalidOperationException("Choose a class before joining.");

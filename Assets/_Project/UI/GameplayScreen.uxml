@@ -27,10 +27,10 @@
             <ui:Button name="steam-invite" text="Invite Friend" />
         </ui:VisualElement>
         <ui:VisualElement name="pause-overlay" class="pause-overlay">
-            <ui:VisualElement class="pause-card">
+            <ui:VisualElement class="pause-card run-pause-card">
                 <ui:Label text="SPACE CRAWLER" class="eyebrow accent" />
                 <ui:Label text="Paused" class="title" />
-                <ui:Label text="" class="subtitle" />
+                <ui:Label name="run-summary" class="run-summary" />
                 <ui:Button name="resume" text="Resume" class="primary" />
                 <ui:Button name="options" text="Options" />
                 <ui:Button name="pause-return-to-menu" text="Return to Main Menu" />

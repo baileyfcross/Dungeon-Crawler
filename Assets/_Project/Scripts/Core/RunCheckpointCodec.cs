@@ -195,7 +195,7 @@ namespace SpaceCrawler.Core
                 if(schema>=8)
                 {
                     int upgradeVersion=reader.ReadInt32();
-                    if(upgradeVersion!=0 && upgradeVersion!=RunUpgrades.CurrentVersion)throw new NotSupportedException("Saved upgrade policy is unsupported.");
+                    if(upgradeVersion<0 || upgradeVersion>RunUpgrades.CurrentVersion)throw new NotSupportedException("Saved upgrade policy is unsupported.");
                     if(upgradeVersion!=0)
                     {
                         int granted=reader.ReadInt32(),pending=reader.ReadInt32();var choices=new int[players*2];

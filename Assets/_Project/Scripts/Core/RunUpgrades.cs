@@ -8,7 +8,8 @@ namespace SpaceCrawler.Core
     /// <summary>Immutable, versioned choices and grant ledger. A grant may be durable before level loading finishes.</summary>
     public sealed class RunUpgrades
     {
-        public const int CurrentVersion = 1;
+        // Policy 1 saves keep their choices and grant ledger, adopting the retuned damage without regranting.
+        public const int CurrentVersion = 2;
         public int Version => CurrentVersion;
         public int Players { get; }
         public int GrantedLevels { get; }
@@ -65,7 +66,7 @@ namespace SpaceCrawler.Core
             int count=0;for(int level=0;level<GrantedLevels;level++)if(Choices[level*Players+slot]==(int)upgrade)count++;return count;
         }
         public int MovementPercent(int slot) => 8*Rank(slot,RunUpgrade.LightweightGear);
-        public int DamagePercent(int slot) => 15*Rank(slot,RunUpgrade.WeaponCalibration);
+        public int DamagePercent(int slot) => 20*Rank(slot,RunUpgrade.WeaponCalibration);
         public RunLifeSnapshot PreviewGrantHealth(RunLifeSnapshot life)
         {
             if(!CanGrant || life.Players.Count!=Players)throw new InvalidOperationException("Upgrade health cannot be granted.");
@@ -79,7 +80,7 @@ namespace SpaceCrawler.Core
             return new RunLifeSnapshot(life.RunId,life.RunXp,vitals,life.Profiles,life.Classes);
         }
         public static string Name(int id) => id==1?"Reinforced Suit":id==2?"Lightweight Gear":id==3?"Weapon Calibration":throw new ArgumentOutOfRangeException(nameof(id));
-        public static string Description(int id) => id==1?"+20 maximum health and heal 20 HP":id==2?"+8% base movement speed":id==3?"+15% base weapon damage":throw new ArgumentOutOfRangeException(nameof(id));
+        public static string Description(int id) => id==1?"+20 maximum health and heal 20 HP":id==2?"+8% base movement speed":id==3?"+20% base weapon damage":throw new ArgumentOutOfRangeException(nameof(id));
     }
 }
 

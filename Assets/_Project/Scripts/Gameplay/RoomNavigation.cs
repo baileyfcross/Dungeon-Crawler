@@ -14,6 +14,24 @@ namespace SpaceCrawler.Gameplay
         private readonly GameObject owner;
         private readonly AstarPath astar;
         private GridGraph graph;
+        private readonly List<StaticObstacle> obstacles=new List<StaticObstacle>();
+        private readonly struct StaticObstacle
+        {
+            public readonly Collider2D Collider;
+            public readonly Bounds Bounds;
+            public StaticObstacle(Collider2D collider,float radius){Collider=collider;var bounds=collider.bounds;bounds.Expand(radius*2);Bounds=bounds;}
+        }
+        private bool NodeBlocked(Vector2 point,float radius)
+        {
+            float squared=radius*radius;
+            foreach(var obstacle in obstacles)
+            {
+                var bounds=obstacle.Bounds;
+                if(point.x<bounds.min.x || point.x>bounds.max.x || point.y<bounds.min.y || point.y>bounds.max.y)continue;
+                if((obstacle.Collider.ClosestPoint(point)-point).sqrMagnitude<=squared)return true;
+            }
+            return false;
+        }
         public int PathRequests { get; private set; }
 
         public RoomNavigation(Transform parent, RoomNavigation shared = null)
@@ -22,6 +40,9 @@ namespace SpaceCrawler.Gameplay
             owner = new GameObject("RoomNavigation"); owner.transform.SetParent(parent, false); owner.SetActive(false);
             astar = owner.AddComponent<AstarPath>(); astar.scanOnStartup = false;
             astar.threadCount = ThreadCount.None; astar.logPathResults = PathLog.None;
+            // Small per-room scans must not stop the entire game for a full-heap collection.
+            // The library opt-out is local to this instance; normal automatic GC is unchanged.
+            astar.CollectGarbageAfterScan = false;
             owner.SetActive(true);
         }
 
@@ -34,18 +55,25 @@ namespace SpaceCrawler.Gameplay
             graph.is2D = true; graph.center = room.transform.TransformPoint(bounds.center);
             graph.SetDimensions(Mathf.CeilToInt(bounds.width / CellSize), Mathf.CeilToInt(bounds.height / CellSize), CellSize);
             graph.cutCorners = false; graph.collision.heightCheck = false; graph.collision.collisionCheck = false;
-            Physics2D.SyncTransforms(); astar.Scan();
+            Physics2D.SyncTransforms();
+            // Snapshot the room's static geometry once. Per-cell overlap queries allocate and cross the
+            // physics boundary thousands of times; bounds reject most cells before an exact shape query.
+            float radius=BodyRadius+.05f;obstacles.Clear();
+            foreach(var collider in Physics2D.OverlapBoxAll(graph.center,bounds.size+Vector2.one*(radius*2),0))
+                if(IsSolid(collider))obstacles.Add(new StaticObstacle(collider,radius));
+            // Other occupied rooms share this AstarPath. Never rescan their grids or erase their cover.
+            astar.Scan(new NavGraph[]{graph});
             astar.AddWorkItem(new AstarWorkItem(context =>
             {
                 graph.GetNodes(node =>
                 {
                     Vector3 point = (Vector3)node.position;
-                    node.Walkable = !Blocked(point, BodyRadius + .05f);
+                    node.Walkable = !NodeBlocked(point,radius);
                 });
                 graph.GetNodes(node => graph.CalculateConnections((GridNode)node));
-                context.QueueFloodFill();
+                // Walkable/connection setters mark affected nodes dirty; FlushWorkItems updates connectivity.
             }));
-            astar.FlushWorkItems();
+            astar.FlushWorkItems();obstacles.Clear();
         }
 
         public bool Reachable(Vector2 from, Vector2 to)

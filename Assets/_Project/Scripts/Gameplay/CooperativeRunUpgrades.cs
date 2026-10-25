@@ -24,7 +24,7 @@ namespace SpaceCrawler.Gameplay
 
     public sealed partial class MultiplayerSession
     {
-        private const string UpgradeChoiceMessage="session.upgrade-choice.v13",UpgradeStateMessage="session.upgrades.v13";
+        private const string UpgradeChoiceMessage="session.upgrade-choice.v14",UpgradeStateMessage="session.upgrades.v14";
         public RunUpgrades Upgrades { get; private set; }
         public bool UpgradePending=>Upgrades?.Pending==true;
         public string UpgradeNotice=>Mode==SessionRole.Host?HealthFailure:upgradeSaveBlocked?"The host could not save upgrade progress. Waiting for retry.":null;

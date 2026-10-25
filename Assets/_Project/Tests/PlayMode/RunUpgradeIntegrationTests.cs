@@ -10,6 +10,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UIElements;
 using Object=UnityEngine.Object;
 using CoreVector=System.Numerics.Vector2;
 
@@ -18,16 +19,17 @@ namespace SpaceCrawler.Tests.PlayMode
     public sealed class RunUpgradeIntegrationTests
     {
         private GameplaySession session;
+        private ApplicationScreen screen;
         private RunCheckpoint saved;
         private ApplicationFlow flow;
         private bool blocked,blockNextLevel;
-        private void Start(RunCheckpoint checkpoint=null,bool enabled=true)
+        private void Start(RunCheckpoint checkpoint=null,bool enabled=true,string classId="")
         {
             var prefab=AssetDatabase.LoadAssetAtPath<GameplaySession>("Assets/_Project/Prefabs/Gameplay/RoomGameplaySession.prefab");session=Object.Instantiate(prefab);
             flow=new ApplicationFlow();flow.TryRequest(ApplicationCommand.Initialize);flow.CompleteLoading(ApplicationState.MainMenu);flow.TryRequest(ApplicationCommand.NewGame);flow.CompleteLoading(ApplicationState.Gameplay);
             session.PollLocalDevices=false;session.Bind(new PlayerIdentity(1),flow,42,true,checkpoint,c=>
             {if(blocked || blockNextLevel && c.LevelNumber==2)throw new IOException("Storage fixture");saved=c;},
-                checkpoint==null?null:AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/_Project/Data/Weapons/Knife.asset"),enableRunUpgrades:enabled);
+                checkpoint==null?null:AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/_Project/Data/Weapons/Knife.asset"),enableRunUpgrades:enabled,classId:classId);
             session.Input.HandleFocus(true);
         }
         private void ReachExit()
@@ -43,7 +45,38 @@ namespace SpaceCrawler.Tests.PlayMode
         }
         private static IEnumerator Until(Func<bool> condition)
         {float end=Time.realtimeSinceStartup+8;while(!condition()){Assert.That(Time.realtimeSinceStartup,Is.LessThan(end));yield return null;}yield return null;}
-        [UnityTearDown]public IEnumerator TearDown(){if(session!=null)Object.Destroy(session.gameObject);yield return null;}
+        [UnityTearDown]public IEnumerator TearDown(){if(screen!=null)Object.Destroy(screen.gameObject);if(session!=null)Object.Destroy(session.gameObject);yield return null;}
+        private void AttachScreen()
+        {
+            screen=Object.Instantiate(AssetDatabase.LoadAssetAtPath<ApplicationScreen>("Assets/_Project/Prefabs/UI/GameplayScreen.prefab"));
+            screen.Bind(flow);screen.BindRun(session);
+        }
+        private void Submit(string name)
+        {
+            var button=screen.View.Q<Button>(name);Assert.That(button.enabledInHierarchy,Is.True);
+            using(var submit=NavigationSubmitEvent.GetPooled()){submit.target=button;button.SendEvent(submit);}
+        }
+        [UnityTest]public IEnumerator RunSummaryAndRepeatedUpgradePreviewSurviveContinue()
+        {
+            yield return SceneManager.LoadSceneAsync("Assets/_Project/Scenes/Gameplay.unity");Start(classId:"captain");
+            session.DamagePlayer(Guid.NewGuid(),65);ReachExit();AttachScreen();yield return null;yield return null;
+            Assert.That(screen.View.Q<Button>("upgrade-1").text,Does.Contain("35/100 HP → 55/120 HP"));
+            Assert.That(screen.View.Q<Button>("upgrade-3").text,Does.Contain("25 → 30").And.Contain("Owned: 0/2"));
+            Submit("upgrade-3");Assert.That(session.Upgrades.Choice(0),Is.Zero,"Selection alone cannot grant or confirm.");
+            Assert.That(session.Life[0].Current,Is.EqualTo(35));
+            screen.GetComponent<RunUpgradePanel>().ConsumePause();yield return null;yield return null;
+            Assert.That(screen.View.Q<Label>("run-summary").text,Does.Contain("Captain").And.Contain("Level 1/3").And.Contain("35/100 HP").And.Contain("+0% base damage"));
+            flow.TryRequest(ApplicationCommand.Resume);yield return null;yield return null;Submit("confirm-upgrade");
+            yield return Until(()=>session.LevelNumber==2);flow.TryRequest(ApplicationCommand.Pause);yield return null;
+            Assert.That(screen.View.Q<Label>("run-summary").text,Does.Contain("Weapon Calibration: Rank 1/2").And.Contain("+20% base damage"));
+            session.SaveCurrent();var checkpoint=RunCheckpointCodec.Decode(RunCheckpointCodec.Encode(saved));
+            Object.Destroy(screen.gameObject);Object.Destroy(session.gameObject);yield return null;Start(checkpoint);AttachScreen();
+            flow.TryRequest(ApplicationCommand.Pause);yield return null;
+            Assert.That(screen.View.Q<Label>("run-summary").text,Does.Contain("Captain").And.Contain("Weapon Calibration: Rank 1/2").And.Contain("+20% base damage"));
+            flow.TryRequest(ApplicationCommand.Resume);ReachExit();yield return null;yield return null;
+            Assert.That(screen.View.Q<Button>("upgrade-3").text,Does.Contain("Owned: 1/2").And.Contain("30 → 35"));
+            Assert.That(session.Upgrades.Choice(0),Is.Zero);Assert.That(session.Combat.Simulation.EquippedWeapon.Damage,Is.EqualTo(25));
+        }
         [UnityTest]public IEnumerator HealthUpgradeWaitsForStorageAndContinueDoesNotHealAgain()
         {
             yield return SceneManager.LoadSceneAsync("Assets/_Project/Scenes/Gameplay.unity");Start();
@@ -76,8 +109,21 @@ namespace SpaceCrawler.Tests.PlayMode
                 session.Simulation.RequestAim(new AimIntent(new PlayerIdentity(1),CoreVector.UnitX));
                 session.Combat.Simulation.AdvanceTime(1);
                 Assert.That(session.Combat.Simulation.TryAttack(new AttackIntent(new PlayerIdentity(1),CoreVector.UnitX),out var attack),Is.True);
-                Assert.That(attack.Weapon.Damage,Is.EqualTo(level==1?29:33));Assert.That(session.Combat.Simulation.EquippedWeapon.Damage,Is.EqualTo(25));
+                Assert.That(attack.Weapon.Damage,Is.EqualTo(level==1?30:35));Assert.That(session.Combat.Simulation.EquippedWeapon.Damage,Is.EqualTo(25));
             }
+            var target=Object.Instantiate(AssetDatabase.LoadAssetAtPath<DamageableTarget>("Assets/_Project/Prefabs/Combat/MeleeEnemy.prefab"));
+            try
+            {
+                target.Initialize();Assert.That(target.Health.Maximum,Is.EqualTo(100));
+                for(int hit=1;hit<=3;hit++)
+                {
+                    session.Combat.Simulation.AdvanceTime(1);
+                    Assert.That(session.Combat.Simulation.TryAttack(new AttackIntent(new PlayerIdentity(1),CoreVector.UnitX),out var attack),Is.True);
+                    target.ReceiveDamage(new DamageRequest(new PlayerIdentity(1),1000+hit,target.Identity,attack.Weapon.Damage),out _);
+                    Assert.That(target.Health.Current>0,Is.EqualTo(hit<3));
+                }
+            }
+            finally{Object.Destroy(target.gameObject);}
             ReachExit();Assert.That(session.LevelNumber,Is.EqualTo(3));Assert.That(session.UpgradePending,Is.False);Assert.That(session.Life.Ended,Is.False);
         }
         [UnityTest]public IEnumerator LegacySaveRemainsUpgradeFreeEvenWhenNewRunsEnableUpgrades()

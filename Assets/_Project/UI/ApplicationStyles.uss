@@ -63,3 +63,10 @@ Button:disabled { background-color: rgb(17, 28, 41); border-color: rgb(34, 49, 6
 #new-run-overlay .unity-base-field__label { color: rgb(228, 239, 245); min-width: 95px; }
 #new-run-overlay .unity-base-field__input .unity-text-element { color: rgb(8, 27, 38); }
 #new-run-overlay .unity-base-popup-field__input { min-height: 36px; }
+
+.run-pause-card { width: 560px; padding: 24px; }
+.run-pause-card .title { font-size: 32px; margin-top: 6px; margin-bottom: 12px; }
+.run-summary { font-size: 14px; color: rgb(196, 214, 225); white-space: normal; margin-bottom: 16px; }
+
+#display-options .unity-base-field__label { color: rgb(228, 239, 245); min-width: 100px; }
+#display-options .unity-base-field__input .unity-text-element { color: rgb(8, 27, 38); }

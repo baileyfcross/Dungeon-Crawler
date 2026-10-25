@@ -15,6 +15,7 @@ namespace SpaceCrawler.Gameplay
         private Func<bool> ready;
         private Func<int,bool> select;
         private Func<string> failure;
+        private Func<RunStatusPresentation> readStatus;
         private VisualElement host,overlay;
         private readonly Button[] offers=new Button[3];
         private Button confirm;
@@ -23,9 +24,9 @@ namespace SpaceCrawler.Gameplay
         private int draft,shownLevel,lastPauseFrame=-1;
         private bool submitted;
         public bool IsOpen { get; private set; }
-        public void Bind(VisualElement view,ApplicationFlow application,Func<RunUpgrades> read,Func<int> localSlot,Func<bool> available,Func<int,bool> choose,Func<string> notice)
+        public void Bind(VisualElement view,ApplicationFlow application,Func<RunUpgrades> read,Func<int> localSlot,Func<bool> available,Func<int,bool> choose,Func<string> notice,Func<RunStatusPresentation> presentation)
         {
-            flow=application;state=read;slot=localSlot;ready=available;select=choose;failure=notice;
+            flow=application;state=read;slot=localSlot;ready=available;select=choose;failure=notice;readStatus=presentation;
             host=view.Q(className:"gameplay-root") ?? view;
             overlay=new VisualElement{name="run-upgrade-overlay"};overlay.AddToClassList("pause-overlay");overlay.style.display=DisplayStyle.None;
             var card=new VisualElement();card.AddToClassList("pause-card");card.style.width=540;overlay.Add(card);
@@ -34,8 +35,10 @@ namespace SpaceCrawler.Gameplay
             for(int i=0;i<3;i++)
             {
                 int id=i+1;var button=new Button(()=>{draft=id;Refresh();}){name="upgrade-"+id,text=RunUpgrades.Name(id)+"\n"+RunUpgrades.Description(id)};
-                button.style.height=66;button.style.whiteSpace=WhiteSpace.Normal;offers[i]=button;card.Add(button);
+                button.style.height=72;button.style.fontSize=14;button.style.whiteSpace=WhiteSpace.Normal;offers[i]=button;card.Add(button);
             }
+            var stacking=new Label("Movement and damage bonuses add to base stats. Damage rounds once. Sprint stays ×1.5."){name="upgrade-stacking-hint"};
+            stacking.AddToClassList("description");stacking.style.fontSize=13;stacking.style.marginBottom=12;card.Add(stacking);
             confirm=new Button(()=>{if(draft>0 && select(draft))submitted=true;Refresh();}){name="confirm-upgrade",text="Confirm Upgrade"};confirm.AddToClassList("primary");card.Add(confirm);
             var menu=new Button(()=>flow.TryRequest(ApplicationCommand.ReturnToMainMenu)){name="upgrade-return-to-menu",text="Save & Return to Main Menu"};card.Add(menu);
             status=new Label();status.AddToClassList("description");status.style.fontSize=14;status.style.marginTop=8;status.style.marginBottom=0;card.Add(status);
@@ -67,8 +70,11 @@ namespace SpaceCrawler.Gameplay
             var current=state();if(current==null || !current.Pending)return;
             int own=slot(),chosen=current.Choice(own);if(chosen>0)submitted=false;
             title.text="Upgrade before Level "+(current.PendingLevel+1);
+            var presentation=readStatus();
             for(int i=0;i<3;i++)
             {
+                string text=presentation?.Offer(i+1) ?? RunUpgrades.Name(i+1);
+                if(offers[i].text!=text)offers[i].text=text;
                 offers[i].SetEnabled(chosen==0 && !submitted);
                 offers[i].EnableInClassList("primary",(chosen>0?chosen:draft)==i+1);
             }

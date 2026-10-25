@@ -174,6 +174,10 @@ public class AstarPath : VersionedMonoBehaviour {
 	/// </summary>
 	public PathLog logPathResults = PathLog.Normal;
 
+	/// <summary>Whether Scan forces a blocking full collection after completion. The default preserves
+	/// existing library behavior. Applications with small runtime scans can opt out; automatic GC stays enabled.</summary>
+	public bool CollectGarbageAfterScan { get; set; } = true;
+
 	/// <summary>@}</summary>
 	#endregion
 
@@ -1778,7 +1782,7 @@ public class AstarPath : VersionedMonoBehaviour {
 		watch.Stop();
 		lastScanTime = (float)watch.Elapsed.TotalSeconds;
 
-		System.GC.Collect();
+		if (CollectGarbageAfterScan) System.GC.Collect();
 
 		if (logPathResults != PathLog.None && logPathResults != PathLog.OnlyErrors) {
 			Debug.Log("Scanning - Process took "+(lastScanTime*1000).ToString("0")+" ms to complete");

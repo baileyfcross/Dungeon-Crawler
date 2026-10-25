@@ -29,7 +29,7 @@ namespace SpaceCrawler.Tests.EditMode
             var state=new RunUpgrades(1);
             for(int level=1;level<=2;level++){state=state.Begin(level);state.TrySelect(0,upgrade,out state);state=state.Grant().EnterLevel(level+1);}
             Assert.That(state.Rank(0,(RunUpgrade)upgrade),Is.EqualTo(2));Assert.That(state.MovementPercent(0),Is.EqualTo(upgrade==2?16:0));
-            Assert.That(state.DamagePercent(0),Is.EqualTo(upgrade==3?30:0));Assert.Throws<InvalidOperationException>(()=>state.Begin(3));
+            Assert.That(state.DamagePercent(0),Is.EqualTo(upgrade==3?40:0));Assert.Throws<InvalidOperationException>(()=>state.Begin(3));
         }
         [Test]
         public void HealthGrantKeepsDamageDeficitAndDoesNotAwardXp()
@@ -42,6 +42,7 @@ namespace SpaceCrawler.Tests.EditMode
             Assert.Throws<InvalidOperationException>(()=>state.Grant().PreviewGrantHealth(life.Capture()));
         }
         [TestCase(25,15,29)] [TestCase(25,30,33)] [TestCase(20,15,23)] [TestCase(20,30,26)]
+        [TestCase(25,20,30)] [TestCase(25,40,35)] [TestCase(20,20,24)] [TestCase(20,40,28)]
         public void DamageRoundsOnceFromBaseAndPreservesWeaponDefinition(int baseline,int percent,int expected)
         {
             var player=new PlayerSimulation(new PlayerIdentity(1),5);player.SetActive(true);
@@ -78,6 +79,24 @@ namespace SpaceCrawler.Tests.EditMode
             string path=Path.GetFullPath("Logs/Validation/UpgradeSaves/"+Guid.NewGuid().ToString("N")+"/run.save");Directory.CreateDirectory(Path.GetDirectoryName(path));File.WriteAllBytes(path,old);
             new RunCheckpointStore(path).Save(saved);Assert.That(File.ReadAllBytes(path+".schema7"),Is.EqualTo(old));
             Assert.That(RunCheckpointCodec.Decode(File.ReadAllBytes(path)).Upgrades,Is.Null);
+        }
+        [Test]
+        public void OriginalUpgradeSaveMigratesChoicesToRetunedDamageWithoutRegranting()
+        {
+            var state=new RunUpgrades(2).Begin(1);state.TrySelect(0,3,out state);state.TrySelect(1,2,out state);state=state.Grant();
+            byte[] old=RunCheckpointCodec.Encode(Save(state));int size=BitConverter.ToInt32(old,8);
+            Array.Copy(BitConverter.GetBytes(1),0,old,12+size-28,4);
+            using(var sha=SHA256.Create())Array.Copy(sha.ComputeHash(old,12,size),0,old,12+size,32);
+            var restored=RunCheckpointCodec.Decode(old);
+            Assert.That(restored.Upgrades.Version,Is.EqualTo(2));Assert.That(restored.Upgrades.Choices,Is.EqualTo(state.Choices));
+            Assert.That(restored.Upgrades.DamagePercent(0),Is.EqualTo(20));Assert.That(restored.Upgrades.CanGrant,Is.False);
+            Assert.That(restored.Life.Players[0].Maximum,Is.EqualTo(100));Assert.That(restored.Life.RunXp,Is.Zero);
+        }
+        [TestCase(25,4,3)] [TestCase(20,5,4)]
+        public void FullCalibrationCrossesTheNormalMeleeHealthBreakpoint(int baseline,int originalHits,int upgradedHits)
+        {
+            int full=WeaponConfiguration.Melee("weapon.test",baseline,.5f,2,90).WithDamageBonus(40).Damage;
+            Assert.That((100+baseline-1)/baseline,Is.EqualTo(originalHits));Assert.That((100+full-1)/full,Is.EqualTo(upgradedHits));
         }
         [Test]
         public void InvalidFutureAndUncommittedStatesAreRejected()

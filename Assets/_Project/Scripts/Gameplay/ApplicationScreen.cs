@@ -42,6 +42,21 @@ namespace SpaceCrawler.Gameplay
         private ExploredMinimap minimap;
         private NewRunPanel newRunPanel;
         private RunUpgradePanel upgradePanel;
+        private Label runSummary;
+        private RunStatusPresentation ReadRunStatus()
+        {
+            if(session!=null)return new RunStatusPresentation(session.Life.Capture().Classes[0],session.Difficulty,session.LevelNumber,
+                session.WeaponDisplayName,session.Combat.Simulation.EquippedWeapon,session.Life[0],session.Upgrades,0);
+            if(multiplayer?.RoomReady!=true)return null;
+            return new RunStatusPresentation(multiplayer.LocalClass,multiplayer.Difficulty,multiplayer.LevelNumber,
+                multiplayer.WeaponDisplayName,multiplayer.BaseWeapon,multiplayer.Vitals(multiplayer.LocalPlayer-1),multiplayer.Upgrades,multiplayer.LocalPlayer-1);
+        }
+        private void ShowRunSummary()
+        {
+            if(runSummary==null)return;
+            string text=ReadRunStatus()?.Summary ?? "Waiting for the shared run...";
+            if(runSummary.text!=text)runSummary.text=text;
+        }
         private bool ConsumeMenuPause()=>upgradePanel?.ConsumePause()==true || audioOptions.ConsumePause();
         private void BindUpgrades()
         {
@@ -49,7 +64,7 @@ namespace SpaceCrawler.Gameplay
             upgradePanel.Bind(View,flow,()=>session!=null?session.Upgrades:multiplayer?.Upgrades,
                 ()=>session!=null?0:multiplayer.LocalPlayer-1,()=>session!=null || multiplayer?.RoomReady==true,
                 choice=>session!=null?session.SelectUpgrade(choice):multiplayer.SelectUpgrade(choice),
-                ()=>session!=null?session.HealthFailure:multiplayer?.UpgradeNotice);
+                ()=>session!=null?session.HealthFailure:multiplayer?.UpgradeNotice,ReadRunStatus);
         }
         public void BindDifficulty(ApplicationRoot root)
         {
@@ -63,6 +78,7 @@ namespace SpaceCrawler.Gameplay
         {
 
             if (healthBar != null) healthBar.EnableInClassList("health-damaged",Time.unscaledTime < damageUntil);
+            if(flow?.State==ApplicationState.Paused)ShowRunSummary();
             if (runXp != null) runXp.text = $"Run XP  {session?.Life.RunXp ?? multiplayer?.RunXp ?? 0}";
             var hint = View.Q<Label>("completion-hint");
             if (hint != null) hint.text = session != null ? session.CompletionHint : multiplayer?.CompletionHint ?? string.Empty;
@@ -247,6 +263,7 @@ namespace SpaceCrawler.Gameplay
             hud = View.Q("gameplay-hud");
             if(hud!=null){minimap=new ExploredMinimap();hud.Add(minimap);minimap.Present(null,1,1);}
             pauseOverlay = View.Q("pause-overlay");
+            runSummary=View.Q<Label>("run-summary");
             deathOverlay = View.Q("death-overlay"); deathReturn = View.Q<Button>("death-return-to-menu");
             completionOverlay = View.Q("completion-overlay"); completionReturn = View.Q<Button>("completion-return-to-menu");
             if (completionReturn != null) completionReturn.clicked += RequestReturn;
@@ -303,6 +320,7 @@ namespace SpaceCrawler.Gameplay
                 status.text = state == ApplicationState.Loading ? "Loading..." : flow.ErrorMessage;
             if (state == ApplicationState.Paused && resume != null)
             {
+                ShowRunSummary();
                 resume.schedule.Execute(() => { if (flow.State == ApplicationState.Paused) resume.Focus(); });
             }
             else if (state == representedState && newGame != null)

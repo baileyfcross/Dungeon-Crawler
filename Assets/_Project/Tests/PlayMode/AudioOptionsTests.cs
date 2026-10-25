@@ -54,6 +54,35 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(root.CurrentScreen.View.Q<Button>("resume").enabledInHierarchy,Is.True);
             Submit("options");Submit("audio-defaults");Assert.That(audio.Preferences.Muted,Is.False);Assert.That(audio.Preferences.Master,Is.EqualTo(.75f));Submit("options-close");
         }
+        private sealed class DisplayFixture : IDisplayDevice
+        {
+            public bool CanApply=>true;
+            public DisplayPreferences Current {get;private set;}=new DisplayPreferences(1280,720,DisplayMode.Windowed);
+            public DisplayPreferences Defaults=>new DisplayPreferences(1920,1080,DisplayMode.Borderless);
+            public System.Collections.Generic.IReadOnlyList<DisplayPreferences> SupportedSizes=>new[]{Current,Defaults};
+            public void Apply(DisplayPreferences value){Current=value;}
+        }
+        [UnityTest] public IEnumerator DisplayDraftConfirmationAndEscapeStayInsideOptions()
+        {
+            var display=root.GetComponent<GameDisplay>();var device=new DisplayFixture();display.Bind(Path.Combine(path,"DeviceSettings"),device);
+            Submit("options");Submit("options-display");yield return null;
+            root.CurrentScreen.View.Q<DropdownField>("display-resolution").value="1920 × 1080";
+            root.CurrentScreen.View.Q<DropdownField>("display-mode").value="Borderless";
+            Assert.That(device.Current.Width,Is.EqualTo(1280),"Draft changes cannot resize the player.");
+            Submit("display-apply");yield return null;Assert.That(display.Change.Pending,Is.True);
+            Assert.That(root.CurrentScreen.View.Q<Button>("options-close").enabledInHierarchy,Is.False);
+            var panel=root.CurrentScreen.GetComponent<AudioOptionsPanel>();Assert.That(panel.ConsumePause(),Is.True);
+            Assert.That(display.Change.Pending,Is.False);Assert.That(panel.ConsumePause(),Is.True,"The same Escape cannot close Options after reverting.");
+            Assert.That(panel.IsOpen,Is.True);Assert.That(device.Current.Width,Is.EqualTo(1280));yield return null;
+            Submit("display-defaults");Submit("display-apply");yield return Until(()=>display.Change.CanKeep);Submit("display-keep");yield return null;
+            Assert.That(new DisplayPreferencesStore(Path.Combine(path,"DeviceSettings")).Load(out _).Mode,Is.EqualTo(DisplayMode.Borderless));
+            Submit("options-close");Submit("new-game");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay);
+            root.CurrentGameplay.PollLocalDevices=false;root.CurrentGameplay.Input.HandleFocus(true);root.Flow.TryRequest(ApplicationCommand.Pause);
+            Submit("options");Submit("options-display");yield return null;
+            root.CurrentScreen.View.Q<DropdownField>("display-mode").value="Windowed";Submit("display-apply");yield return null;
+            root.Flow.TryRequest(ApplicationCommand.ReturnToMainMenu);yield return Until(()=>root.Flow.State==ApplicationState.MainMenu);
+            Assert.That(display.Change.Pending,Is.False);Assert.That(device.Current.Mode,Is.EqualTo(DisplayMode.Borderless));
+        }
         [UnityTest] public IEnumerator ReplicatedCountersHealthAndRestoredEnemiesDoNotReplayHistoricalSounds()
         {
             var audio=GameAudio.Current;

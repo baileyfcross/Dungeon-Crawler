@@ -170,7 +170,11 @@ namespace SpaceCrawler.Gameplay
                 }
             }
             Check(session.Upgrades.Pending && session.Upgrades.Choice(0)==1 && session.Upgrades.Choice(1)==0,"pending personal choice restored");
-            if(!Host)Check(session.SelectUpgrade(3),"client damage choice accepted");
+            var screen=FindFirstObjectByType<ApplicationRoot>().CurrentScreen;
+            yield return Until(()=>screen.GetComponent<RunUpgradePanel>().IsOpen,"upgrade view ready");
+            var damageOffer=screen.View.Q<Button>("upgrade-3").text;
+            Check(damageOffer.Contains(session.BaseWeapon.Damage+" → "+session.BaseWeapon.WithDamageBonus(20).Damage) && damageOffer.Contains("Owned: 0/2"),"personal base damage preview on both peers");
+            if(!Host){yield return new WaitForSeconds(.5f);Check(session.SelectUpgrade(3),"client damage choice accepted");}
             yield return Until(()=>session.LevelNumber==2 && session.RoomReady,"party advances after both choices");
             Check(!session.Upgrades.Pending && session.Upgrades.GrantedLevels==1,"durable grant completed");
             Check(session.Upgrades.Rank(0,RunUpgrade.ReinforcedSuit)==1 && session.Upgrades.Rank(1,RunUpgrade.WeaponCalibration)==1,"personal choices preserved");
@@ -179,9 +183,45 @@ namespace SpaceCrawler.Gameplay
             {
                 Check(session.Life[0].Current==55 && session.Life[0].Maximum==120 && session.Life[1].Maximum==100,"suit heals exactly once");
                 var combat=session.Players[1].Combat.Simulation;combat.AdvanceTime(2);
-                Check(combat.TryAttack(new AttackIntent(new PlayerIdentity(2),CoreVector.UnitX),out var attack) && attack.Weapon.Damage==29,"authoritative calibrated attack");
+                Check(combat.TryAttack(new AttackIntent(new PlayerIdentity(2),CoreVector.UnitX),out var attack) && attack.Weapon.Damage==session.BaseWeapon.WithDamageBonus(20).Damage,"authoritative calibrated attack");
                 session.SaveCurrent();
             }
+            flow.TryRequest(ApplicationCommand.Pause);yield return null;yield return null;
+            string summary=screen.View.Q<Label>("run-summary").text;
+            Check(summary.Contains(Host?"Reinforced Suit: Rank 1/2":"Weapon Calibration: Rank 1/2")
+                && summary.Contains(Host?"55/120 HP":"100/100 HP") && summary.Contains(Host?"+0% base damage":"+20% base damage"),"personal pause summary on both peers");
+            var summaryEvidence=SessionDiagnostics.Option("--ranged-evidence");
+            if(summaryEvidence!=null)foreach(var size in new[]{new Vector2Int(1280,720),new Vector2Int(1024,768)})
+                yield return SteamSessionValidationDriver.CapturePanel(screen,System.IO.Path.Combine(summaryEvidence,(Host?"Host":"Client")+$".Pause.{size.x}x{size.y}.png"),size.x,size.y);
+            flow.TryRequest(ApplicationCommand.Resume);
+            if(SessionDiagnostics.Option("--display-coop")=="true")
+            {
+                var localDisplay=GameDisplay.Current;var ownWindow=localDisplay.Device.Current;
+                if(Host)
+                {
+                    double end=Time.realtimeSinceStartupAsDouble+3;
+                    while(Time.realtimeSinceStartupAsDouble<end){Move(CoreVector.UnitX);yield return null;}Move(CoreVector.Zero);
+                    Check(localDisplay.Device.Current.Equals(ownWindow),"client display change leaves host window unchanged");
+                    Check(session.Authority.Running && session.RoomReady,"host simulation stays active");
+                }
+                else
+                {
+                    flow.TryRequest(ApplicationCommand.Pause);
+                    var options=screen.View.Q<Button>("options");using(var submit=NavigationSubmitEvent.GetPooled()){submit.target=options;options.SendEvent(submit);}
+                    var tab=screen.View.Q<Button>("options-display");using(var submit=NavigationSubmitEvent.GetPooled()){submit.target=tab;tab.SendEvent(submit);}
+                    var size=localDisplay.Device.SupportedSizes.FirstOrDefault(s=>s.Width>=1024 && s.Width<=1600 && s.Height>=720 && (s.Width!=ownWindow.Width || s.Height!=ownWindow.Height)) ?? localDisplay.Device.Defaults;
+                    screen.View.Q<DropdownField>("display-mode").value="Windowed";
+                    screen.View.Q<DropdownField>("display-resolution").value=$"{size.Width} × {size.Height}";
+                    var apply=screen.View.Q<Button>("display-apply");using(var submit=NavigationSubmitEvent.GetPooled()){submit.target=apply;apply.SendEvent(submit);}
+                    yield return Until(()=>localDisplay.Change.CanKeep,"client display preview applied");
+                    float before=session.Players[0].State.Position.X;yield return new WaitForSecondsRealtime(1);
+                    Check(session.Players[0].State.Position.X>before+.2f,"host movement replicates during client display preview");
+                    screen.GetComponent<AudioOptionsPanel>().ConsumePause();yield return Until(()=>localDisplay.Device.Current.Equals(ownWindow),"client display reverted");
+                    screen.GetComponent<AudioOptionsPanel>().TryClose();flow.TryRequest(ApplicationCommand.Resume);yield return new WaitForSecondsRealtime(4);
+                }
+                Record("DISPLAY-COOP-PASS");
+            }
+            Record("RUN-STATUS-COOP-PASS");
             Record("UPGRADES-PASS");if(!Host){yield return new WaitForSeconds(1);Application.Quit(0);}
         }
         private IEnumerator Run()

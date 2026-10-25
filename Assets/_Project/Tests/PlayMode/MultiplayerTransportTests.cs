@@ -11,6 +11,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UIElements;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using Object = UnityEngine.Object;
@@ -129,7 +130,7 @@ namespace SpaceCrawler.Tests.PlayMode
         [UnityTest]
         public IEnumerator PersonalUpgradeChoicesAreDurableAndRequireBothPlayers()
         {
-            yield return StartPair(levels:true,combatFixture:false,upgrades:true);
+            yield return StartPair(levels:true,combatFixture:false,upgrades:true,hostClass:"captain",clientClass:"doctor");
             host.DamagePlayer(new PlayerIdentity(1),Guid.NewGuid(),65);
             yield return ReachUpgradeStop();
             Assert.That(host.Players[0].Input.GameplayInputEnabled,Is.False);
@@ -141,7 +142,13 @@ namespace SpaceCrawler.Tests.PlayMode
             client.Stop();host.Stop();yield return Frames(5);Object.Destroy(client.gameObject);Object.Destroy(host.gameObject);yield return Frames(3);
             yield return StartPair(levels:true,combatFixture:false,checkpoint:pending,upgrades:true);
             Assert.That(host.Upgrades.Choice(0),Is.EqualTo(1));Assert.That(client.Upgrades.Choice(0),Is.EqualTo(1));
-            SendJson(client.Network,NetworkManager.ServerClientId,"session.upgrade-choice.v13",JsonUtility.ToJson(new UpgradeChoiceRequest{runId=host.Life.RunId.ToString("N"),epoch=host.Epoch-1,level=1,choice=2}));
+            transportScreen=Object.Instantiate(AssetDatabase.LoadAssetAtPath<ApplicationScreen>("Assets/_Project/Prefabs/UI/GameplayScreen.prefab"));
+            transportScreen.Bind(clientFlow);transportScreen.BindMultiplayer(client);yield return Frames(3);
+            Assert.That(transportScreen.View.Q<Button>("upgrade-3").text,Does.Contain("Owned: 0/2").And.Contain("25 → 30"));
+            transportScreen.GetComponent<RunUpgradePanel>().ConsumePause();yield return Frames(2);
+            Assert.That(transportScreen.View.Q<Label>("run-summary").text,Does.Contain("Doctor").And.Contain("100/100 HP").And.Contain("+0% base damage"));
+            clientFlow.TryRequest(ApplicationCommand.Resume);yield return Frames(2);
+            SendJson(client.Network,NetworkManager.ServerClientId,"session.upgrade-choice.v14",JsonUtility.ToJson(new UpgradeChoiceRequest{runId=host.Life.RunId.ToString("N"),epoch=host.Epoch-1,level=1,choice=2}));
             yield return Frames(5);Assert.That(host.Upgrades.Choice(1),Is.Zero,"stale commands cannot choose");
             rejectUpgradeSaves=true;Assert.That(client.SelectUpgrade(3),Is.True);
             yield return WaitFor(()=>host.Upgrades.AllConfirmed,"client choice received");
@@ -154,8 +161,12 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Life[1].Maximum,Is.EqualTo(100));Assert.That(host.Upgrades.Rank(1,RunUpgrade.WeaponCalibration),Is.EqualTo(1));
             var combat=host.Players[1].Combat.Simulation;combat.AdvanceTime(2);
             Assert.That(combat.TryAttack(new AttackIntent(new PlayerIdentity(2),CoreVector.UnitX),out var attack),Is.True);
-            Assert.That(attack.Weapon.Damage,Is.EqualTo(29));Assert.That(host.Upgrades.Rank(0,RunUpgrade.WeaponCalibration),Is.Zero);
+            Assert.That(attack.Weapon.Damage,Is.EqualTo(30));Assert.That(host.Upgrades.Rank(0,RunUpgrade.WeaponCalibration),Is.Zero);
             Assert.That(latestCheckpoint.Upgrades.GrantedLevels,Is.EqualTo(1));Assert.That(latestCheckpoint.Upgrades.Pending,Is.False);
+            yield return WaitFor(()=>client.Vitals(0).Maximum==120,"healed host snapshot delivered");
+            clientFlow.TryRequest(ApplicationCommand.Pause);yield return Frames(2);
+            Assert.That(transportScreen.View.Q<Label>("run-summary").text,Does.Contain("Doctor").And.Contain("100/100 HP")
+                .And.Contain("Reinforced Suit: Rank 0/2").And.Contain("Weapon Calibration: Rank 1/2").And.Contain("+20% base damage"));
             Assert.That(host.Failure ?? client.Failure,Is.Null);
         }
 
@@ -403,7 +414,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(priorBuild.Approved,Is.False);
             request.Payload=System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession10");
             var oldRewards=new NetworkManager.ConnectionApprovalResponse();host.Network.ConnectionApprovalCallback(request,oldRewards);Assert.That(oldRewards.Approved,Is.False);
-            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession13");
+            request.Payload = System.Text.Encoding.ASCII.GetBytes("SpaceCrawlerSession14");
             var accepted = new NetworkManager.ConnectionApprovalResponse();
             host.Network.ConnectionApprovalCallback(request, accepted);
             Assert.That(accepted.Approved, Is.True);
@@ -485,9 +496,9 @@ namespace SpaceCrawler.Tests.PlayMode
                 {
                     Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
                     var rejected = host.Authority.RejectedStale;
-                    SendClient("session.input.v13", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
+                    SendClient("session.input.v14", new PlayerInputMessage { Epoch = lastEpoch - 1, ClaimedPlayer = 2,
                         Sequence = 9999, AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.up });
-                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v13", JsonUtility.ToJson(
+                    SendJson(client.Network, host.Network.LocalClientId, "session.room-ready.v14", JsonUtility.ToJson(
                         new RoomLoadAcknowledgment { epoch = lastEpoch, level = level, room = 0, fingerprint = host.Fingerprint }));
                     yield return WaitFor(() => host.Authority.RejectedStale > rejected, "prior-level input rejected");
                     Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1), "Old-level acknowledgment cannot commit entry again.");
@@ -535,7 +546,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(host.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero)); Assert.That(client.Follower.transform.eulerAngles, Is.EqualTo(Vector3.zero));
 
             var before = host.Authority.RejectedOwnership;
-            SendClient("session.input.v13", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
+            SendClient("session.input.v14", new PlayerInputMessage { ClaimedPlayer = 1, Epoch = host.Epoch, Sequence = 9999,
                 AttackSequence = 9999, Active = true, Move = Vector2.up, Aim = Vector2.left });
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Authority.RejectedOwnership, Is.EqualTo(before + 1));
@@ -653,11 +664,11 @@ namespace SpaceCrawler.Tests.PlayMode
         {
             yield return StartPair(); var initial = host.CurrentRoom;
             var forged = new RunSessionDescriptor { classes=new[]{"",""},runId = host.Life.RunId.ToString("N"), epoch = host.Epoch + 1, seed = "999", fingerprint = "forged", destination = 10, generationVersion = 1, weapon = "weapon.knife" };
-            SendJson(client.Network, host.Network.LocalClientId, "session.run.v13", JsonUtility.ToJson(forged));
+            SendJson(client.Network, host.Network.LocalClientId, "session.run.v14", JsonUtility.ToJson(forged));
             yield return new WaitForSeconds(.15f);
             Assert.That(host.Run.Seed, Is.EqualTo(42)); Assert.That(host.CurrentRoom, Is.EqualTo(initial)); Assert.That(host.Progression.RoomsEntered, Is.EqualTo(1));
             // Fault injection from the real server transport, deliberately corrupting graph agreement.
-            SendJson(host.Network, client.Network.LocalClientId, "session.run.v13", JsonUtility.ToJson(forged));
+            SendJson(host.Network, client.Network.LocalClientId, "session.run.v14", JsonUtility.ToJson(forged));
             yield return WaitFor(() => client.Failure != null, "mismatching descriptor rejection");
             Assert.That(client.Failure, Does.Contain("mismatch")); Assert.That(client.Run.Seed, Is.EqualTo(42));
         }
@@ -790,7 +801,7 @@ namespace SpaceCrawler.Tests.PlayMode
             Assert.That(hostStore.Profile.Experience,Is.EqualTo(15));Assert.That(clientStore.Profile.Experience,Is.EqualTo(15));
             Assert.That(host.Outcome.Reason,Is.EqualTo(RunEndReason.Completed));Assert.That(client.Vitals(1).State,Is.EqualTo(PlayerLifeState.Alive));
             var receipt=host.Outcome;
-            SendJson(host.Network,client.Network.LocalClientId,"session.end.v13",JsonUtility.ToJson(new RunEndMessage {runId=receipt.RunId.ToString("N"),xp=receipt.RunXp,reason=(int)receipt.Reason,percent=receipt.Percent,profiles=receipt.Profiles.Select(id=>id.ToString("N")).ToArray()}));
+            SendJson(host.Network,client.Network.LocalClientId,"session.end.v14",JsonUtility.ToJson(new RunEndMessage {runId=receipt.RunId.ToString("N"),xp=receipt.RunXp,reason=(int)receipt.Reason,percent=receipt.Percent,profiles=receipt.Profiles.Select(id=>id.ToString("N")).ToArray()}));
             yield return Frames(5);Assert.That(clientStore.Profile.Experience,Is.EqualTo(15));Assert.That(host.Life.TryComplete(),Is.False);
             client.Stop();yield return Frames(5);Assert.That(hostFlow.State,Is.EqualTo(ApplicationState.Completed),"completion panel survives peer departure");
         }

@@ -10,7 +10,7 @@ namespace SpaceCrawler.Core
         public WeaponConfiguration EquippedWeapon { get; }
         private int damageBonusPercent;
         public void SetDamageBonusPercent(int percent)
-        { if(percent<0 || percent>30)throw new ArgumentOutOfRangeException(nameof(percent));damageBonusPercent=percent; }
+        { if(percent<0 || percent>40)throw new ArgumentOutOfRangeException(nameof(percent));damageBonusPercent=percent; }
         public float CooldownRemaining { get; private set; }
         public long AcceptedAttackCount { get; private set; }
         public AttackExecution LastExecution { get; private set; }

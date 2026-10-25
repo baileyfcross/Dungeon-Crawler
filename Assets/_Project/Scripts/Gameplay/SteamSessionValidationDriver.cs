@@ -46,9 +46,17 @@ namespace SpaceCrawler.Gameplay
         private IEnumerator Run()
         {
             string mode=SessionDiagnostics.Option("--steam-session-validation");
-            if(mode=="upgrades")
+            if(mode=="upgrades" || mode=="run-status")
             {
-                Submit("new-game");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay,"new upgrade run");
+                bool statusCheck=mode=="run-status";
+                if(statusCheck)
+                {
+                    root.CurrentScreen.OpenRunSetup(()=>root.Flow.TryRequest(ApplicationCommand.NewGame),true,"New Game");
+                    root.CurrentScreen.View.Q<DropdownField>("player-class").value="Logistics Manager";
+                    root.CurrentScreen.View.Q<DropdownField>("run-difficulty").value="Hard";Submit("start-run");
+                }
+                else Submit("new-game");
+                yield return Until(()=>root.Flow.State==ApplicationState.Gameplay,"new upgrade run");
                 var game=root.CurrentGameplay;game.PollLocalDevices=false;game.Input.HandleFocus(true);root.Flow.TryRequest(ApplicationCommand.Resume);
                 game.DamagePlayer(Guid.NewGuid(),65);
                 while(!game.Rooms.Progression.IsTerminal)
@@ -58,21 +66,58 @@ namespace SpaceCrawler.Gameplay
                 }
                 yield return Until(()=>root.CurrentScreen.GetComponent<RunUpgradePanel>().IsOpen,"upgrade modal opens");
                 Check(!game.Input.GameplayInputEnabled && !root.CurrentScreen.View.Q<Button>("confirm-upgrade").enabledInHierarchy,"input and confirmation gated");
+                if(statusCheck)
+                {
+                    Check(root.CurrentScreen.View.Q<Button>("upgrade-1").text.Contains("35/100 HP → 55/120 HP"),"health preview keeps damage deficit");
+                    Check(root.CurrentScreen.View.Q<Button>("upgrade-3").text.Contains("25 → 30"),"first damage preview");
+                }
                 string capture=SessionDiagnostics.Option("--steam-screenshot");
                 if(capture!=null)foreach(var size in new[]{new Vector2Int(1280,720),new Vector2Int(1920,1080),new Vector2Int(1024,768),new Vector2Int(1280,800)})
                     yield return CapturePanel(root.CurrentScreen,capture+$".{size.x}x{size.y}.png",size.x,size.y);
                 Check(root.CurrentScreen.GetComponent<RunUpgradePanel>().ConsumePause(),"upgrade escape opens pause");
-                yield return null;Check(root.Flow.State==ApplicationState.Paused,"pause available");root.Flow.TryRequest(ApplicationCommand.Resume);
+                yield return null;Check(root.Flow.State==ApplicationState.Paused,"pause available");
+                if(statusCheck)
+                {
+                    Check(root.CurrentScreen.View.Q<Label>("run-summary").text.Contains("Logistics Manager"),"class in pause summary");
+                    if(capture!=null)foreach(var size in new[]{new Vector2Int(1280,720),new Vector2Int(1920,1080),new Vector2Int(1024,768),new Vector2Int(1280,800)})
+                        yield return CapturePanel(root.CurrentScreen,capture+$".Pause.{size.x}x{size.y}.png",size.x,size.y);
+                }
+                root.Flow.TryRequest(ApplicationCommand.Resume);
                 yield return Until(()=>root.CurrentScreen.GetComponent<RunUpgradePanel>().IsOpen,"resume returns to upgrade");
                 Submit("upgrade-return-to-menu");yield return Until(()=>root.Flow.State==ApplicationState.MainMenu,"pending upgrade saved");
                 Submit("continue");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay,"pending upgrade Continue");
                 game=root.CurrentGameplay;game.PollLocalDevices=false;game.Input.HandleFocus(true);root.Flow.TryRequest(ApplicationCommand.Resume);
                 yield return Until(()=>root.CurrentScreen.GetComponent<RunUpgradePanel>().IsOpen,"pending modal restored");
-                Submit("upgrade-1");Submit("confirm-upgrade");
+                Submit(statusCheck?"upgrade-3":"upgrade-1");Submit("confirm-upgrade");
                 yield return Until(()=>game.LevelNumber==2,"confirmed upgrade advances");
-                Check(game.Life[0].Current==55 && game.Life[0].Maximum==120,"health granted exactly once");
+                Check(game.Life[0].Current==(statusCheck?35:55) && game.Life[0].Maximum==(statusCheck?100:120),"only selected upgrade applied");
                 Check(game.Input.MovementNeedsNeutral,"modal requires movement release");
-                Debug.Log("[SteamSessionValidation] UPGRADES-PASS");Application.Quit(0);yield break;
+                if(statusCheck)
+                {
+                    root.Flow.TryRequest(ApplicationCommand.ReturnToMainMenu);yield return Until(()=>root.Flow.State==ApplicationState.MainMenu,"earned upgrade saved");
+                    Submit("continue");yield return Until(()=>root.Flow.State==ApplicationState.Gameplay,"earned upgrade Continue");
+                    game=root.CurrentGameplay;game.PollLocalDevices=false;game.Input.HandleFocus(true);root.Flow.TryRequest(ApplicationCommand.Resume);
+                    root.Flow.TryRequest(ApplicationCommand.Pause);yield return null;
+                    var summary=root.CurrentScreen.View.Q<Label>("run-summary").text;
+                    Check(summary.Contains("Logistics Manager") && summary.Contains("Hard") && summary.Contains("Weapon Calibration: Rank 1/2") && summary.Contains("+20% base damage"),"earned summary restored");
+                    if(capture!=null)foreach(var size in new[]{new Vector2Int(1280,720),new Vector2Int(1920,1080),new Vector2Int(1024,768),new Vector2Int(1280,800)})
+                        yield return CapturePanel(root.CurrentScreen,capture+$".PauseEarned.{size.x}x{size.y}.png",size.x,size.y);
+                    root.Flow.TryRequest(ApplicationCommand.Resume);
+                    while(!game.Rooms.Progression.IsTerminal)
+                    {
+                        var edge=game.Run.Route(game.Rooms.Progression.CurrentRoomId,game.Run.TerminalRoomId)[0];
+                        Check(game.Rooms.RequestExit(new ExitIntent(new PlayerIdentity(1),edge.From,edge.To)),"second upgrade stop traversal");
+                    }
+                    yield return Until(()=>root.CurrentScreen.GetComponent<RunUpgradePanel>().IsOpen,"second modal opens");
+                    Check(root.CurrentScreen.View.Q<Button>("upgrade-3").text.Contains("Owned: 1/2") && root.CurrentScreen.View.Q<Button>("upgrade-3").text.Contains("30 → 35"),"repeated damage preview uses base");
+                    if(capture!=null)foreach(var size in new[]{new Vector2Int(1280,720),new Vector2Int(1920,1080),new Vector2Int(1024,768),new Vector2Int(1280,800)})
+                        yield return CapturePanel(root.CurrentScreen,capture+$".SecondUpgrade.{size.x}x{size.y}.png",size.x,size.y);
+                    Submit("upgrade-3");Submit("confirm-upgrade");yield return Until(()=>game.LevelNumber==3,"second upgrade confirmed");
+                    Check(game.Upgrades.DamagePercent(0)==40 && game.Life[0].Maximum==100,"preview did not apply extra health or damage");
+                    Debug.Log("[SteamSessionValidation] RUN-STATUS-PASS");
+                }
+                else Debug.Log("[SteamSessionValidation] UPGRADES-PASS");
+                Application.Quit(0);yield break;
             }
             if(mode=="classes")
             {
